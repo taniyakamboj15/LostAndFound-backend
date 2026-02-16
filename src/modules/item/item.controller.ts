@@ -64,6 +64,8 @@ class ItemController {
         dateFound,
         isHighValue,
         estimatedValue,
+        contactEmail,
+        contactPhone,
       } = req.body;
 
       const multerFiles = (req as MulterRequest).files || [];
@@ -87,6 +89,10 @@ class ItemController {
         registeredBy: req.user!.id,
         isHighValue,
         estimatedValue,
+        finderContact: {
+          email: contactEmail,
+          phone: contactPhone,
+        },
       });
 
       res.status(201).json({

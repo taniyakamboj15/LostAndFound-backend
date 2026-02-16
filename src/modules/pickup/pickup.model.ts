@@ -1,7 +1,10 @@
 import mongoose, { Schema } from 'mongoose';
 import { IPickupModel } from '../../common/types';
 
-export interface IPickup extends IPickupModel {}
+export interface IPickup extends IPickupModel {
+  isVerified: boolean;
+  verifiedAt?: Date;
+}
 
 const pickupSchema = new Schema<IPickup>(
   {
@@ -52,6 +55,11 @@ const pickupSchema = new Schema<IPickup>(
       default: false,
       index: true,
     },
+    isVerified: {
+      type: Boolean,
+      default: false,
+    },
+    verifiedAt: Date,
     completedAt: Date,
     completedBy: {
       type: Schema.Types.ObjectId,

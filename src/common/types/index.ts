@@ -67,6 +67,7 @@ export enum NotificationEvent {
   PICKUP_REMINDER = 'PICKUP_REMINDER',
   EMAIL_VERIFICATION = 'EMAIL_VERIFICATION',
   PROOF_REQUESTED = 'PROOF_REQUESTED',
+  PICKUP_BOOKED = 'PICKUP_BOOKED',
 }
 
 // --- Common Base Types ---
@@ -141,6 +142,7 @@ export interface LostReportSearchFilters {
   dateLostFrom?: Date;
   dateLostTo?: Date;
   keyword?: string;
+  reportedBy?: string;
 }
 
 export interface MatchScore {

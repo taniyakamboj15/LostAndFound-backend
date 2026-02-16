@@ -1,257 +1,112 @@
 # Lost & Found Item Recovery Platform - Backend
 
-Enterprise-grade backend system for managing lost and found items across airports, universities, hotels, and event venues.
+> **Developed by: Taniya Kamboj**
 
-## 🚀 Features
+![Status](https://img.shields.io/badge/Status-Production-brightgreen)
+![Node.js](https://img.shields.io/badge/Node.js-18.0-green)
+![Express](https://img.shields.io/badge/Express-4.18-gray)
+![MongoDB](https://img.shields.io/badge/MongoDB-7.0-green)
 
-- **Multi-role Authentication**: Admin, Staff, Claimant with JWT + OAuth Google
-- **Item Lifecycle Management**: AVAILABLE → CLAIMED → RETURNED → DISPOSED
-- **Automated Matching Engine**: AI-powered matching between found items and lost reports
-- **Claim Verification Workflow**: Strict state machine with proof validation
-- **Pickup Scheduling**: Time-slot booking with QR code verification
-- **Disposition Management**: Automated handling of unclaimed items
-- **Real-time Notifications**: BullMQ + Redis for async email notifications
-- **Analytics Dashboard**: Comprehensive metrics and reporting
-- **Audit Logging**: Complete activity trail for compliance
-- **Public Search Portal**: Privacy-safe item browsing
+## 📖 Description
 
-## 📋 Prerequisites
+A full-stack system for organizations, transit authorities, or public venues to catalog lost items, allow owners to file claims, and manage the verification and return process with location-based matching.
 
-- Node.js >= 18.0.0
-- MongoDB >= 7.0
-- Redis >= 7.0
-- Docker & Docker Compose (optional)
+This repository contains the **Backend** API, built with Node.js, Express, and MongoDB.
 
-## 🛠️ Installation
+- **Frontend Repository:** [https://github.com/taniyakamboj15/LostAndFound-frontend.git](https://github.com/taniyakamboj15/LostAndFound-frontend.git)
+- **Backend Repository:** [https://github.com/taniyakamboj15/LostAndFound-backend.git](https://github.com/taniyakamboj15/LostAndFound-backend.git)
 
-### Local Development
+## 🎯 Use Cases
 
-```bash
-# Clone repository
-cd backend
+- **Airports and Transit Authorities**: Managing passenger lost belongings.
+- **Universities and Large Campuses**: Centralizing lost-and-found operations.
+- **Hotels and Event Venues**: Handling guest forgotten items.
 
-# Install dependencies
-npm install
+## ✨ Features
 
-# Copy environment file
-cp .env.example .env
+- **Robust Authentication**: Secure JWT-based auth (Admin, Staff, Claimant) + Google OAuth.
+- **Item Lifecycle Management**: Tracks items from `AVAILABLE` → `CLAIMED` → `RETURNED` → `DISPOSED`.
+- **Automated Matching Engine**: Intelligent matching of Lost Reports to Found Items using keyword analysis and fuzzy logic.
+- **Claim Verification System**: State machine for handling claims, proof submission, and staff approval/rejection.
+- **Item Storage Management**: Shelf/Bin tracking with capacity management.
+- **Pickup Scheduling**: Slot-based booking system for item retrieval.
+- **Disposition Workflows**: Automated handling for unclaimed items (Donate/Auction/Dispose).
+- **Advanced Analytics**: Metrics for recovery rates, category trends, and staff performance.
+- **Notification Service**: Asynchronous email notifications via BullMQ + Redis.
+- **Security**: RBAC (Role-Based Access Control), Rate Limiting, Input Sanitization.
 
-# Update .env with your configuration
+## 🛠️ Tech Stack
 
-# Start MongoDB and Redis locally or use Docker
-docker-compose up -d mongodb redis
-
-# Run development server
-npm run dev
-
-# Run worker (in separate terminal)
-npm run worker
-```
-
-### Docker Deployment
-
-```bash
-# Build and start all services
-docker-compose up -d
-
-# View logs
-docker-compose logs -f api
-
-# Stop services
-docker-compose down
-```
+- **Runtime**: Node.js
+- **Framework**: Express.js
+- **Database**: MongoDB (Mongoose)
+- **Caching/Queue**: Redis
+- **Authentication**: Passport.js (JWT, Google Strategy)
+- **Validation**: Joi / Zod
+- **Logging**: Winston
 
 ## 📁 Project Structure
 
-```
+```bash
 src/
-├── modules/
-│   ├── user/              # User management
-│   ├── session/           # Authentication & JWT
-│   ├── item/              # Found items
-│   ├── lost-report/       # Lost item reports
-│   ├── claim/             # Claim verification
-│   ├── match/             # Matching engine
-│   ├── storage/           # Storage locations
-│   ├── pickup/            # Pickup scheduling
-│   ├── disposition/       # Unclaimed item handling
-│   ├── notification/      # Email notifications
-│   ├── analytics/         # Dashboard metrics
-│   └── activity/          # Audit logging
-├── common/
-│   ├── middlewares/       # Auth, RBAC, validation, etc.
-│   ├── errors/            # Custom error classes
-│   ├── types/             # TypeScript definitions
-│   ├── utils/             # Logger, helpers
-│   └── helpers/           # Async handler
-├── config/                # Database, Redis, Passport, Email
-├── routes/                # Route aggregator
-├── app.ts                 # Express app setup
-└── server.ts              # Entry point
+├── modules/        # Domain-driven feature modules (Item, User, Claim, etc.)
+├── common/         # Shared middlewares, types, and helpers
+├── config/         # Configuration (DB, Redis, Email)
+├── routes/         # API routes
+└── server.ts       # Application entry point
 ```
 
-## 🔐 Environment Variables
+## 🚀 Installation & Setup
 
-See `.env.example` for all required configuration:
+1.  **Clone the repository**
+    ```bash
+    git clone https://github.com/taniyakamboj15/LostAndFound-backend.git
+    cd LostAndFound-backend
+    ```
 
-- **Server**: PORT, NODE_ENV, API_URL, CLIENT_URL
-- **Database**: MONGODB_URI
-- **Redis**: REDIS_HOST, REDIS_PORT
-- **JWT**: JWT_ACCESS_SECRET, JWT_REFRESH_SECRET
-- **OAuth**: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
-- **Email**: SMTP_HOST, SMTP_USER, SMTP_PASSWORD
-- **Retention**: RETENTION_PERIOD_DEFAULT (30 days)
+2.  **Install dependencies**
+    ```bash
+    npm install
+    ```
 
-## 🔑 API Endpoints
+3.  **Configure Environment**
+    Create a `.env` file based on `.env.example`:
+    ```env
+    PORT=5000
+    MONGODB_URI=mongodb://localhost:27017/lostandfound
+    JWT_SECRET=your_secret_key
+    REDIS_HOST=localhost
+    REDIS_PORT=6379
+    # ... other config variables
+    ```
 
-### Authentication
-- `POST /api/auth/register` - Register new user
-- `POST /api/auth/login` - Login with credentials
-- `POST /api/auth/refresh` - Refresh access token
-- `POST /api/auth/logout` - Logout
-- `GET /api/auth/google` - Google OAuth login
-- `GET /api/auth/google/callback` - OAuth callback
+4.  **Start Services**
+    Ensure MongoDB and Redis are running (e.g., via Docker):
+    ```bash
+    docker-compose up -d
+    ```
 
-### Users
-- `GET /api/users/profile` - Get user profile
-- `PATCH /api/users/profile` - Update profile
-- `POST /api/users/verify-email` - Verify email
-- `POST /api/users/resend-verification` - Resend verification
+5.  **Run Server**
+    ```bash
+    npm run dev
+    ```
 
-### Items (Staff/Admin)
-- `POST /api/items` - Register found item
-- `GET /api/items` - List items (filtered)
-- `GET /api/items/:id` - Get item details
-- `PATCH /api/items/:id/status` - Update status
-- `PATCH /api/items/:id/storage` - Assign storage
+## 🔑 API Endpoints Overview
 
-### Public Search
-- `GET /api/public/items` - Search found items (no auth)
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| **POST** | `/api/auth/login` | User login |
+| **GET** | `/api/items` | List found items |
+| **POST** | `/api/claims` | File a new claim |
+| **POST** | `/api/lost-reports` | Submit a lost item report |
+| **GET** | `/api/analytics/dashboard` | Admin dashboard stats |
 
-### Lost Reports (Claimant)
-- `POST /api/lost-reports` - Submit lost report
-- `GET /api/lost-reports` - List my reports
-- `GET /api/lost-reports/:id` - Get report details
+*(See full API documentation in the codebase)*
 
-### Claims
-- `POST /api/claims` - File claim
-- `GET /api/claims` - List claims
-- `POST /api/claims/:id/proof` - Upload proof
-- `PATCH /api/claims/:id/verify` - Verify claim (Staff)
-- `PATCH /api/claims/:id/reject` - Reject claim (Staff)
+## 🤝 Contribution
 
-### Pickup
-- `POST /api/pickups` - Book pickup slot
-- `GET /api/pickups/slots` - Available slots
-- `POST /api/pickups/:id/complete` - Complete handoff
+Contributions are welcome! Please fork the repository and submit a pull request.
 
-### Analytics (Admin)
-- `GET /api/analytics/dashboard` - Dashboard metrics
-- `GET /api/analytics/category-breakdown` - Category stats
-- `GET /api/analytics/trends` - Time-series data
+## 📄 License
 
-### Activity Logs (Admin/Staff)
-- `GET /api/activities` - All activities
-- `GET /api/activities/user/:userId` - User activities
-- `GET /api/activities/entity/:type/:id` - Entity activities
-
-## 🔒 Security Features
-
-- **JWT Authentication**: Access tokens (15min) + Refresh tokens (7 days)
-- **httpOnly Cookies**: Secure token delivery
-- **RBAC**: Role-based access control on all routes
-- **Rate Limiting**: Configurable per endpoint
-- **Input Sanitization**: XSS and NoSQL injection protection
-- **Email Verification**: Required before filing claims
-- **Password Hashing**: bcrypt with salt rounds
-- **Helmet**: Security headers
-- **CORS**: Configurable origins
-
-## 📊 Data Models
-
-### User
-- Roles: ADMIN, STAFF, CLAIMANT
-- Email verification required
-- OAuth Google integration
-- Password hashing with bcrypt
-
-### Item
-- Status: AVAILABLE → CLAIMED → RETURNED → DISPOSED
-- Retention period (30/60/90 days)
-- Photo storage
-- Storage location tracking
-- Keyword extraction for matching
-
-### Claim
-- State machine: FILED → IDENTITY_PROOF_REQUESTED → VERIFIED → PICKUP_BOOKED → RETURNED
-- Proof document storage
-- Manual verification required
-
-### Match
-- Confidence scoring (0-1)
-- Category, keyword, date, location factors
-- Ranked suggestions only
-
-## 🔔 Notifications
-
-Async notifications via BullMQ:
-- Match found (high confidence)
-- Claim status updates
-- Retention expiry warnings (7 days before)
-- Pickup reminders (24 hours before)
-- Email verification
-
-## 📈 Analytics Metrics
-
-- Total items found vs claimed
-- Match success rate
-- Average recovery time
-- Category breakdown
-- Pending claims count
-- Expiring items (next 7 days)
-
-## 🧪 Testing
-
-```bash
-# Run TypeScript compilation
-npm run build
-
-# Check for errors
-npm run lint
-
-# Format code
-npm run format
-```
-
-## 🚢 Deployment
-
-### Production Checklist
-
-1. Set `NODE_ENV=production`
-2. Use strong JWT secrets
-3. Configure SMTP for emails
-4. Set up Google OAuth credentials
-5. Enable HTTPS
-6. Configure CORS origins
-7. Set appropriate retention periods
-8. Configure rate limits
-9. Set up MongoDB indexes
-10. Configure Redis persistence
-
-### Docker Production
-
-```bash
-# Build production image
-docker build -t lost-and-found-api .
-
-# Run with docker-compose
-docker-compose -f docker-compose.yml up -d
-```
-
-## 📝 License
-
-MIT
-
-## 🤝 Support
-
-For issues and questions, contact: support@lostandfound.com
+This project is licensed under the MIT License.

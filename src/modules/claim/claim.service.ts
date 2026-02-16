@@ -61,7 +61,13 @@ class ClaimService {
 
   async getClaimById(claimId: string): Promise<IClaim> {
     const claim = await Claim.findById(claimId)
-      .populate('itemId')
+      .populate({
+        path: 'itemId',
+        populate: {
+          path: 'storageLocation',
+          model: 'Storage',
+        },
+      })
       .populate('claimantId', 'name email')
       .populate('verifiedBy', 'name email')
       .populate('lostReportId');

@@ -21,6 +21,10 @@ interface CreateItemData {
   registeredBy: string;
   isHighValue?: boolean;
   estimatedValue?: number;
+  finderContact?: {
+    email?: string;
+    phone?: string;
+  };
 }
 
 class ItemService {
@@ -46,6 +50,7 @@ class ItemService {
       photos,
       retentionPeriodDays,
       retentionExpiryDate,
+      finderContact: data.finderContact,
     });
 
     // Log activity
@@ -190,17 +195,14 @@ class ItemService {
     itemId: string,
     storageLocationId: string
   ): Promise<IItem> {
-    const item = await Item.findByIdAndUpdate(
-      itemId,
-      { storageLocation: storageLocationId },
-      { new: true }
-    );
-
-    if (!item) {
-      throw new NotFoundError('Item not found');
-    }
-
-    return item;
+    // Delegate to StorageService to ensure counts are updated
+    // We need to dynamically import StorageService to avoid circular dependency issues if any
+    const { default: storageService } = await import('../storage/storage.service');
+    
+    await storageService.assignItemToStorage(itemId, storageLocationId);
+    
+    // Fetch and return the updated item
+    return this.getItemById(itemId);
   }
 
   async getExpiringItems(daysThreshold: number = 7): Promise<IItem[]> {

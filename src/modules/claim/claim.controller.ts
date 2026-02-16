@@ -1,7 +1,8 @@
 import { Response } from 'express';
 import { asyncHandler } from '../../common/helpers/asyncHandler';
-import { AuthenticatedRequest, MulterRequest } from '../../common/types';
+import { AuthenticatedRequest, MulterRequest, UserRole } from '../../common/types';
 import claimService from './claim.service';
+import { ForbiddenError } from '../../common/errors';
 
 class ClaimController {
   createClaim = asyncHandler(
@@ -74,9 +75,46 @@ class ClaimController {
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       const claim = await claimService.getClaimById(req.params.id);
 
+      // Access control
+      const isStaffOrAdmin = [UserRole.STAFF, UserRole.ADMIN].includes(
+        req.user!.role as UserRole
+      );
+      
+      const claimantDetails = claim.claimantId as unknown as { _id: string } | string;
+      const claimantId = typeof claimantDetails === 'object' && '_id' in claimantDetails
+        ? claimantDetails._id.toString()
+        : claimantDetails.toString();
+      const isClaimant = claimantId === req.user!.id;
+
+      if (!isStaffOrAdmin && !isClaimant) {
+        throw new ForbiddenError('You do not have permission to view this claim');
+      }
+
+      // Fetch timeline from Activity logs
+      // We need to dynamically import Activity model to avoid circular dependency if any, 
+      // or just import it at top if safe. 
+      // Safe to import here as it is not used in model definition.
+      const { default: Activity } = await import('../activity/activity.model');
+      
+      const activities = await Activity.find({
+        entityType: 'Claim',
+        entityId: claim._id
+      })
+      .sort({ createdAt: 1 })
+      .populate('userId', 'name role');
+
+      const timeline = activities.map(activity => ({
+        action: activity.action.replace(/_/g, ' '), // e.g. CLAIM_FILED -> CLAIM FILED
+        actor: (activity.userId as any).name || 'System',
+        timestamp: activity.createdAt
+      }));
+
       res.json({
         success: true,
-        data: claim,
+        data: {
+          ...claim.toObject(),
+          timeline
+        },
       });
     }
   );

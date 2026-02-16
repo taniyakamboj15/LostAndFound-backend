@@ -47,14 +47,21 @@ class LostReportController {
         limit = 20,
       } = req.query;
 
+      const query: any = {
+        category: category as never,
+        location: location as string,
+        dateLostFrom: dateLostFrom ? new Date(dateLostFrom as string) : undefined,
+        dateLostTo: dateLostTo ? new Date(dateLostTo as string) : undefined,
+        keyword: keyword as string,
+      };
+
+      if (req.user!.role === 'CLAIMANT') {
+
+         query.reportedBy = req.user!.id;
+      }
+
       const result = await lostReportService.searchLostReports(
-        {
-          category: category as never,
-          location: location as string,
-          dateLostFrom: dateLostFrom ? new Date(dateLostFrom as string) : undefined,
-          dateLostTo: dateLostTo ? new Date(dateLostTo as string) : undefined,
-          keyword: keyword as string,
-        },
+        query,
         {
           page: parseInt(page as string),
           limit: parseInt(limit as string),

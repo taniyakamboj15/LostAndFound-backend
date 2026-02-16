@@ -1,7 +1,8 @@
 import { Response } from 'express';
 import { asyncHandler } from '../../common/helpers/asyncHandler';
-import { AuthenticatedRequest } from '../../common/types';
+import { AuthenticatedRequest, UserRole } from '../../common/types';
 import pickupService from './pickup.service';
+import { ForbiddenError } from '../../common/errors';
 
 class PickupController {
   bookPickup = asyncHandler(
@@ -46,9 +47,18 @@ class PickupController {
         limit: parseInt(limit as string),
       });
 
+      const pickups = result.data.map(pickup => {
+        const pickupObj = pickup.toObject();
+        if (req.user!.role === UserRole.STAFF) {
+          const { referenceCode, qrCode, ...safePickup } = pickupObj;
+          return safePickup;
+        }
+        return pickupObj;
+      });
+
       res.json({
         success: true,
-        data: result.data,
+        data: pickups,
         pagination: {
           page: parseInt(page as string),
           limit: parseInt(limit as string),
@@ -63,9 +73,29 @@ class PickupController {
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       const pickup = await pickupService.getPickupById(req.params.id);
 
+      // Access control
+      const isStaffOrAdmin = [UserRole.STAFF, UserRole.ADMIN].includes(
+        req.user!.role as UserRole
+      );
+      const isClaimant = pickup.claimantId._id.toString() === req.user!.id;
+
+      if (!isStaffOrAdmin && !isClaimant) {
+        throw new ForbiddenError('You do not have permission to view this pickup');
+      }
+
+      const pickupObj = pickup.toObject();
+     
+      let responseData: Record<string, unknown> = pickupObj as unknown as Record<string, unknown>;
+
+      // Hide sensitive data for Staff (unless Admin)
+      if (req.user!.role === UserRole.STAFF) {
+        const { referenceCode, qrCode, ...safePickup } = pickupObj;
+        responseData = safePickup;
+      }
+
       res.json({
         success: true,
-        data: pickup,
+        data: responseData,
       });
     }
   );
@@ -89,18 +119,16 @@ class PickupController {
     }
   );
 
-  verifyReference = asyncHandler(
+    verifyReference = asyncHandler(
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       const { referenceCode } = req.body;
 
-      const isValid = await pickupService.verifyReferenceCode(
-        req.params.id,
-        referenceCode
-      );
+      const pickup = await pickupService.verifyReferenceCode(referenceCode);
 
       res.json({
         success: true,
-        data: { isValid },
+        message: 'Pickup verified successfully',
+        data: pickup,
       });
     }
   );
@@ -114,7 +142,10 @@ class PickupController {
           page: parseInt(page as string),
           limit: parseInt(limit as string),
         },
-        { isCompleted, pickupDate }
+        {
+          isCompleted: isCompleted as string | undefined,
+          pickupDate: pickupDate as string | undefined,
+        }
       );
 
       res.json({

@@ -77,6 +77,19 @@ class PickupService {
       },
     });
 
+    // Notify claimant about booking confirmation
+    await notificationService.queueNotification({
+      event: NotificationEvent.PICKUP_BOOKED,
+      userId: data.claimantId,
+      data: {
+        pickupId: pickup._id.toString(),
+        pickupDate: data.pickupDate,
+        startTime: data.startTime,
+        endTime: data.endTime,
+        referenceCode,
+      },
+    });
+
     // Schedule pickup reminder (24 hours before)
     const reminderDate = new Date(data.pickupDate);
     reminderDate.setHours(reminderDate.getHours() - 24);
@@ -169,8 +182,23 @@ class PickupService {
       throw new NotFoundError('Pickup not found');
     }
 
-    if (pickup.referenceCode !== referenceCode) {
+    // If reference code is provided, verify it matches
+    if (referenceCode && pickup.referenceCode !== referenceCode) {
       throw new ValidationError('Invalid reference code');
+    }
+
+    // If no reference code, ensure it was already verified
+    if (!referenceCode && !pickup.isVerified) {
+      throw new ValidationError('Pickup must be verified before completion');
+    }
+
+    if (!pickup.isVerified) {
+       // Double check verification even if code matched (though verifyReferenceCode should have set it)
+       // Or we can allow code match to auto-verify? 
+       // Current flow: Verify -> isVerified=true -> Complete (no code)
+       // OR Complete (with code) -> Verify & Complete
+       // Let's stick to strict: Must be verified. Code is just an extra check if provided.
+      throw new ValidationError('Pickup must be verified before completion');
     }
 
     if (pickup.isCompleted) {
@@ -193,6 +221,13 @@ class PickupService {
     // Update item status
     const item = await Item.findById(pickup.itemId);
     if (item) {
+      // If item was in storage, remove it to free up space
+      if (item.storageLocation) {
+        const { default: storageService } = await import('../storage/storage.service');
+        await storageService.removeItemFromStorage(item.storageLocation.toString());
+        item.storageLocation = undefined;
+      }
+
       item.status = ItemStatus.RETURNED;
       await item.save();
     }
@@ -213,16 +248,26 @@ class PickupService {
   }
 
   async verifyReferenceCode(
-    pickupId: string,
     referenceCode: string
-  ): Promise<boolean> {
-    const pickup = await Pickup.findById(pickupId);
+  ): Promise<IPickup> {
+    const pickup = await Pickup.findOne({ referenceCode })
+      .populate('claimId')
+      .populate('itemId')
+      .populate('claimantId', 'name email phone');
 
     if (!pickup) {
-      return false;
+      throw new NotFoundError('Invalid reference code');
     }
 
-    return pickup.referenceCode === referenceCode;
+    if (pickup.isCompleted) {
+      throw new ValidationError('Pickup already completed');
+    }
+
+    pickup.isVerified = true;
+    pickup.verifiedAt = new Date();
+    await pickup.save();
+
+    return pickup;
   }
 
   async getAllPickups(

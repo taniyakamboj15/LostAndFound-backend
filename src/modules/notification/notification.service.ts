@@ -41,6 +41,7 @@ class NotificationService {
       [NotificationEvent.PICKUP_REMINDER]: 'pickup-reminder.hbs',
       [NotificationEvent.EMAIL_VERIFICATION]: 'email-verification.hbs',
       [NotificationEvent.PROOF_REQUESTED]: 'proof-requested.hbs',
+      [NotificationEvent.PICKUP_BOOKED]: 'pickup-booked.hbs',
     };
 
     Object.entries(templateFiles).forEach(([event, filename]) => {
@@ -124,6 +125,7 @@ class NotificationService {
       [NotificationEvent.PICKUP_REMINDER]: 'Pickup Reminder - Tomorrow',
       [NotificationEvent.EMAIL_VERIFICATION]: 'Verify Your Email',
       [NotificationEvent.PROOF_REQUESTED]: 'Proof of Ownership Required',
+      [NotificationEvent.PICKUP_BOOKED]: 'Pickup Confirmed',
     };
 
     const subject = subjects[event];
@@ -196,6 +198,20 @@ class NotificationService {
             <li>Photos showing identifying features</li>
           </ul>
           <a href="${process.env.CLIENT_URL}/claims/${d.claimId}/upload-proof">Upload Proof</a>
+        `,
+      }),
+      [NotificationEvent.PICKUP_BOOKED]: (d) => ({
+        subject: 'Pickup Confirmed',
+        html: `
+          <h1>Pickup Confirmed</h1>
+          <p>Your pickup has been successfully scheduled:</p>
+          <p><strong>Date:</strong> ${new Date(d.pickupDate as string).toLocaleDateString()}</p>
+          <p><strong>Time:</strong> ${d.startTime} - ${d.endTime}</p>
+          <p><strong>Reference Code:</strong> ${d.referenceCode}</p>
+          <div style="text-align: center; margin: 20px 0;">
+            <img src="${d.qrCode}" alt="Pickup QR Code" style="width: 200px; height: 200px;" />
+          </div>
+          <p>Please bring a valid ID and this reference code to the storage location.</p>
         `,
       }),
     };

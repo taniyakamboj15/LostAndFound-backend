@@ -18,6 +18,7 @@ export const bookPickupValidation = [
 export const completePickupValidation = [
   param('id').isMongoId().withMessage('Invalid pickup ID'),
   body('referenceCode')
+    .optional()
     .isString()
     .trim()
     .isLength({ min: 8, max: 8 })
@@ -30,11 +31,11 @@ export const completePickupValidation = [
 ];
 
 export const verifyReferenceValidation = [
-  param('id').isMongoId().withMessage('Invalid pickup ID'),
   body('referenceCode')
     .isString()
     .trim()
-    .isLength({ min: 8, max: 8 }),
+    .isLength({ min: 8, max: 8 })
+    .withMessage('Valid 8-character reference code is required'),
 ];
 
 export const getAvailableSlotsValidation = [

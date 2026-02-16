@@ -59,7 +59,7 @@ router.post(
 
 // Verify reference code (Staff/Admin)
 router.post(
-  '/:id/verify',
+  '/verify',
   requireRole(UserRole.STAFF, UserRole.ADMIN),
   validate(verifyReferenceValidation),
   pickupController.verifyReference

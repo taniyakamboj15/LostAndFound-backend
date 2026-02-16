@@ -21,7 +21,10 @@ const storage = multer.diskStorage({
   },
 });
 
-const fileFilter = (_req: any, file: any, cb: any) => {
+import { Request } from 'express';
+import { FileFilterCallback } from 'multer';
+
+const fileFilter = (_req: Request, file: Express.Multer.File, cb: FileFilterCallback) => {
   const allowedTypes = /jpeg|jpg|png|webp/;
   const mimetype = allowedTypes.test(file.mimetype);
   const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());

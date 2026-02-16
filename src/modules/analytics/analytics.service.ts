@@ -145,47 +145,72 @@ class AnalyticsService {
   }[]> {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
+    startDate.setHours(0, 0, 0, 0);
 
-    const items = await Item.aggregate([
-      {
-        $match: {
-          createdAt: { $gte: startDate },
-        },
-      },
-      {
-        $group: {
-          _id: {
-            date: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
-            status: '$status',
+    const [foundItems, claimedItems, returnedItems] = await Promise.all([
+      // Found items based on createdAt
+      Item.aggregate([
+        { $match: { createdAt: { $gte: startDate } } },
+        {
+          $group: {
+            _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+            count: { $sum: 1 },
           },
-          count: { $sum: 1 },
         },
-      },
-      {
-        $sort: { '_id.date': 1 },
-      },
+      ]),
+      // Claimed items based on claim createdAt
+      Claim.aggregate([
+        { $match: { createdAt: { $gte: startDate } } },
+        {
+          $group: {
+            _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+            count: { $sum: 1 },
+          },
+        },
+      ]),
+      // Returned items based on claim verifiedAt (or could use Pickup completedAt)
+      // Using verifiedAt as proxy for successful return process initiation/completion effectively
+      Claim.aggregate([
+        { 
+          $match: { 
+            status: ClaimStatus.RETURNED,
+            updatedAt: { $gte: startDate } // Approximate date
+          } 
+        },
+        {
+          $group: {
+            _id: { $dateToString: { format: '%Y-%m-%d', date: '$updatedAt' } },
+            count: { $sum: 1 },
+          },
+        },
+      ]),
     ]);
 
     const trendsMap: Record<string, { found: number; claimed: number; returned: number }> = {};
 
-    items.forEach((item: { _id: { date: string; status: string }; count: number }) => {
-      if (!trendsMap[item._id.date]) {
-        trendsMap[item._id.date] = { found: 0, claimed: 0, returned: 0 };
-      }
+    // Initialize map with empty data for all days
+    for (let i = 0; i <= days; i++) {
+        const d = new Date(startDate);
+        d.setDate(d.getDate() + i);
+        const dateStr = d.toISOString().split('T')[0];
+        trendsMap[dateStr] = { found: 0, claimed: 0, returned: 0 };
+    }
 
-      if (item._id.status === ItemStatus.AVAILABLE) {
-        trendsMap[item._id.date].found += item.count;
-      } else if (item._id.status === ItemStatus.CLAIMED) {
-        trendsMap[item._id.date].claimed += item.count;
-      } else if (item._id.status === ItemStatus.RETURNED) {
-        trendsMap[item._id.date].returned += item.count;
-      }
+    foundItems.forEach((item: { _id: string; count: number }) => {
+      if (trendsMap[item._id]) trendsMap[item._id].found = item.count;
     });
 
-    return Object.entries(trendsMap).map(([date, data]) => ({
-      date,
-      ...data,
-    }));
+    claimedItems.forEach((item: { _id: string; count: number }) => {
+      if (trendsMap[item._id]) trendsMap[item._id].claimed = item.count;
+    });
+
+    returnedItems.forEach((item: { _id: string; count: number }) => {
+      if (trendsMap[item._id]) trendsMap[item._id].returned = item.count;
+    });
+
+    return Object.entries(trendsMap)
+      .map(([date, data]) => ({ date, ...data }))
+      .sort((a, b) => a.date.localeCompare(b.date));
   }
 
   async getDispositionStats(): Promise<{

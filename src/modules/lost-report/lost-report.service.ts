@@ -59,6 +59,10 @@ class LostReportService {
   ): Promise<PaginatedResponse<ILostReport>> {
     const query: Record<string, unknown> = {};
 
+    if (filters.reportedBy) {
+      query.reportedBy = filters.reportedBy;
+    }
+
     if (filters.category) {
       query.category = filters.category;
     }

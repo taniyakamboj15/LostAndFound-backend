@@ -1,7 +1,12 @@
 import mongoose, { Schema } from 'mongoose';
 import { ItemStatus, ItemCategory, UploadedFile, IItemModel } from '../../common/types';
 
-export interface IItem extends IItemModel {}
+export interface IItem extends IItemModel {
+  finderContact?: {
+    email?: string;
+    phone?: string;
+  };
+}
 
 const itemSchema = new Schema<IItem>(
   {
@@ -66,6 +71,10 @@ const itemSchema = new Schema<IItem>(
     claimedBy: {
       type: Schema.Types.ObjectId,
       ref: 'User',
+    },
+    finderContact: {
+      email: String,
+      phone: String,
     },
     keywords: [
       {
