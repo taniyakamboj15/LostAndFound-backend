@@ -1,0 +1,26 @@
+{{> header title="Item Retention Warning"}}
+
+<p>Hello,</p>
+
+<p>This is a notification regarding an item currently in our storage. Our retention period for this item is nearing its end.</p>
+
+<div class="info-card" style="border-left: 4px solid #ef4444;">
+  <p><strong>⚠️ Disposal Warning</strong></p>
+  <p>This item will be disposed of in <span style="color: #ef4444; font-weight: 700;">{{daysRemaining}} days</span> if no action is taken.</p>
+</div>
+
+<h2>Item Information</h2>
+<ul>
+  <li><strong>Description:</strong> {{description}}</li>
+  <li><strong>Category:</strong> {{category}}</li>
+  <li><strong>Location Found:</strong> {{locationFound}}</li>
+  <li><strong>Expiry Date:</strong> {{expiryDate}}</li>
+</ul>
+
+<p>If this item belongs to you or you are managing it, please visit the platform to take the necessary actions before the expiry date.</p>
+
+<div style="text-align: center;">
+  <a href="{{clientUrl}}/items/{{itemId}}" class="button">Manage Item</a>
+</div>
+
+{{> footer}}

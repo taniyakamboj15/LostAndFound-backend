@@ -1,0 +1,215 @@
+import Match, { IMatch } from './match.model';
+import Item from '../item/item.model';
+import LostReport from '../lost-report/lost-report.model';
+import { MatchScore } from '../../common/types';
+import { NotFoundError } from '../../common/errors';
+import notificationService from '../notification/notification.service';
+import { NotificationEvent } from '../../common/types';
+
+class MatchService {
+  private readonly MATCH_THRESHOLD = parseFloat(
+    process.env.MATCH_CONFIDENCE_THRESHOLD || '0.6'
+  );
+  private readonly NOTIFICATION_THRESHOLD = parseFloat(
+    process.env.MATCH_NOTIFICATION_THRESHOLD || '0.8'
+  );
+
+  async generateMatches(lostReportId: string): Promise<IMatch[]> {
+    const report = await LostReport.findById(lostReportId);
+
+    if (!report) {
+      throw new NotFoundError('Lost report not found');
+    }
+
+    // Find available items in same category
+    const items = await Item.find({
+      category: report.category,
+      status: 'AVAILABLE',
+    });
+
+    const matches: IMatch[] = [];
+
+    for (const item of items) {
+      const score = this.calculateMatchScore(item, report);
+
+      if (score.totalScore >= this.MATCH_THRESHOLD) {
+        const match = await Match.create({
+          itemId: item._id,
+          lostReportId: report._id,
+          confidenceScore: score.totalScore,
+          categoryScore: score.categoryScore,
+          keywordScore: score.keywordScore,
+          dateScore: score.dateScore,
+          locationScore: score.locationScore,
+        });
+
+        matches.push(match);
+
+        // Send notification for high-confidence matches
+        if (score.totalScore >= this.NOTIFICATION_THRESHOLD) {
+          await notificationService.queueNotification({
+            event: NotificationEvent.MATCH_FOUND,
+            userId: report.reportedBy.toString(),
+            data: {
+              matchId: match._id.toString(),
+              itemId: item._id.toString(),
+              confidenceScore: score.totalScore,
+            },
+          });
+
+          match.notified = true;
+          await match.save();
+        }
+      }
+    }
+
+    return matches;
+  }
+
+  async getMatchesForReport(lostReportId: string): Promise<IMatch[]> {
+    return Match.find({ lostReportId })
+      .sort({ confidenceScore: -1 })
+      .populate('itemId')
+      .populate('lostReportId');
+  }
+
+  async getMatchesForItem(itemId: string): Promise<IMatch[]> {
+    return Match.find({ itemId })
+      .sort({ confidenceScore: -1 })
+      .populate('itemId')
+      .populate('lostReportId');
+  }
+
+  private calculateMatchScore(
+    item: { keywords: string[]; dateFound: Date; locationFound: string },
+    report: { keywords: string[]; dateLost: Date; locationLost: string }
+  ): MatchScore {
+    // Category score (already filtered, so 1.0)
+    const categoryScore = 1.0;
+
+    // Keyword overlap score
+    const keywordScore = this.calculateKeywordScore(
+      item.keywords,
+      report.keywords
+    );
+
+    // Date proximity score
+    const dateScore = this.calculateDateScore(item.dateFound, report.dateLost);
+
+    // Location similarity score
+    const locationScore = this.calculateLocationScore(
+      item.locationFound,
+      report.locationLost
+    );
+
+    // Weighted total score
+    // Increased weight for Keywords and Location as they are most specific
+    const totalScore =
+      categoryScore * 0.2 +
+      keywordScore * 0.4 +
+      dateScore * 0.1 +
+      locationScore * 0.3;
+
+    return {
+      categoryScore,
+      keywordScore,
+      dateScore,
+      locationScore,
+      totalScore,
+    };
+  }
+
+  private normalizeText(text: string): string {
+    return text
+      .toLowerCase()
+      .replace(/[^\w\s]/g, '') // Remove punctuation
+      .replace(/\s+/g, ' ') // Collapse whitespace
+      .trim();
+  }
+
+  private expandAbbreviations(text: string): string {
+    const expansions: Record<string, string> = {
+      't1': 'terminal 1',
+      't2': 'terminal 2',
+      't3': 'terminal 3',
+      'apt': 'apartment',
+      'st': 'street',
+      'ave': 'avenue',
+      'rd': 'road',
+      'rm': 'room',
+      'flr': 'floor',
+      'lib': 'library',
+      'dept': 'department',
+      'bldg': 'building',
+    };
+
+    return text.split(' ').map(word => expansions[word] || word).join(' ');
+  }
+
+  private calculateKeywordScore(
+    itemKeywords: string[],
+    reportKeywords: string[]
+  ): number {
+    if (itemKeywords.length === 0 || reportKeywords.length === 0) {
+      return 0;
+    }
+
+    const stopWords = new Set(['the', 'a', 'an', 'in', 'on', 'at', 'for', 'of', 'with']);
+    const filterKeywords = (keywords: string[]) => 
+      keywords.filter(k => !stopWords.has(k) && k.length > 2);
+
+    const k1 = filterKeywords(itemKeywords);
+    const k2 = filterKeywords(reportKeywords);
+
+    if (k1.length === 0 || k2.length === 0) return 0;
+
+    const intersection = k1.filter((k) =>
+      k2.some(k2Word => k2Word.includes(k) || k.includes(k2Word)) // Partial match
+    ).length;
+    
+    const union = new Set([...k1, ...k2]).size;
+
+    return intersection / union;
+  }
+
+  private calculateDateScore(dateFound: Date, dateLost: Date): number {
+    const daysDiff = Math.abs(
+      (dateFound.getTime() - dateLost.getTime()) / (1000 * 60 * 60 * 24)
+    );
+
+    if (daysDiff === 0) return 1.0;
+    if (daysDiff <= 1) return 0.95;
+    if (daysDiff <= 3) return 0.8;
+    if (daysDiff <= 7) return 0.6;
+    if (daysDiff <= 14) return 0.4;
+    return 0.1;
+  }
+
+  private calculateLocationScore(
+    locationFound: string,
+    locationLost: string
+  ): number {
+    let loc1 = this.normalizeText(locationFound);
+    let loc2 = this.normalizeText(locationLost);
+
+    // Expand common abbreviations (e.g. "T3" -> "terminal 3")
+    loc1 = this.expandAbbreviations(loc1);
+    loc2 = this.expandAbbreviations(loc2);
+
+    if (loc1 === loc2) return 1.0;
+    if (loc1.includes(loc2) || loc2.includes(loc1)) return 0.9;
+
+    // Token matching
+    const words1 = loc1.split(/\s+/);
+    const words2 = loc2.split(/\s+/);
+    
+    // Calculate intersection
+    const intersection = words1.filter(w1 => 
+      words2.some(w2 => w2 === w1 || (w2.length > 4 && w1.includes(w2)))
+    ).length;
+
+    return intersection / Math.max(words1.length, words2.length);
+  }
+}
+
+export default new MatchService();

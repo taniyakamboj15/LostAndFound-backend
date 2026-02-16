@@ -1,0 +1,30 @@
+{{> header title="Potential Match Found!"}}
+
+<p>Hello,</p>
+
+<p>We have some great news! Our system has identified a <strong>potential match</strong> for an item you reported as lost.</p>
+
+<div class="info-card">
+  <div style="margin-bottom: 12px;">
+    <span class="badge">Match Confidence: {{confidenceScore}}%</span>
+  </div>
+  <p><strong>Lost Item:</strong> {{description}}</p>
+  <p><strong>Date Reported:</strong> {{reportedDate}}</p>
+</div>
+
+<p>Please review the details of the found item. If it looks like yours, you can file a claim directly from the match page.</p>
+
+<div style="text-align: center;">
+  <a href="{{clientUrl}}/matches/{{matchId}}" class="button">View Match Details</a>
+</div>
+
+<h2>Next Steps</h2>
+<ul>
+  <li><strong>Review</strong> the photos and description of the found item.</li>
+  <li><strong>File a Claim</strong> if you believe the item belongs to you.</li>
+  <li><strong>Provide Proof</strong> of ownership if requested by our staff.</li>
+</ul>
+
+<p>If you've already found your item or this match isn't correct, you can update your report status in the dashboard.</p>
+
+{{> footer}}

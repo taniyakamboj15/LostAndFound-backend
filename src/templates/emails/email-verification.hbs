@@ -1,0 +1,32 @@
+{{> header title="Verify Your Email"}}
+
+<p>Hello,</p>
+
+<p>Welcome to <strong>Lost & Found Platform</strong>! We're excited to have you on board.</p>
+
+<p>To get started and access all our features, please verify your email address by clicking the button below:</p>
+
+<div style="text-align: center;">
+  <a href="{{clientUrl}}/verify-email?token={{token}}" class="button">Verify Email Address</a>
+</div>
+
+<div class="info-card">
+  <p><strong>⏰ Security Note:</strong> This verification link will expire in <span class="highlight">24 hours</span>.</p>
+  <p>If you didn't create an account with us, you can safely ignore this email.</p>
+</div>
+
+<h2>What's next?</h2>
+<p>Once verified, you'll be able to:</p>
+<ul>
+  <li><strong>Report</strong> items you've found on campus</li>
+  <li><strong>Search</strong> and claim items you've lost</li>
+  <li><strong>Receive</strong> instant notifications for potential matches</li>
+  <li><strong>Manage</strong> your claims and schedule secure pickups</li>
+</ul>
+
+<p>If the button above doesn't work, copy and paste this link into your browser:</p>
+<p style="word-break: break-all; color: #6b7280; font-size: 13px; background-color: #f3f4f6; padding: 12px; border-radius: 6px;">
+  {{clientUrl}}/verify-email?token={{token}}
+</p>
+
+{{> footer}}

@@ -1,0 +1,33 @@
+{{> header title="Claim Status Update"}}
+
+<p>Hello,</p>
+
+<p>The status of your claim for <strong>{{itemDescription}}</strong> has been updated.</p>
+
+<div class="info-card">
+  <p><strong>Current Status:</strong> <span class="badge">{{status}}</span></p>
+  {{#if notes}}
+    <p style="margin-top: 12px;"><strong>Staff Notes:</strong></p>
+    <p style="font-style: italic; color: #4b5563;">"{{notes}}"</p>
+  {{/if}}
+</div>
+
+{{#if (eq status "VERIFIED")}}
+  <div style="background-color: #ecfdf5; border: 1px solid #10b981; border-radius: 8px; padding: 16px; margin: 20px 0;">
+    <p style="color: #065f46; margin: 0;"><strong>🎉 Good news!</strong> Your claim has been verified. You can now schedule a convenient time to pick up your item.</p>
+  </div>
+  <div style="text-align: center;">
+    <a href="{{clientUrl}}/claims/{{claimId}}" class="button">Schedule Pickup</a>
+  </div>
+{{else if (eq status "REJECTED")}}
+  <p>We're sorry, but your claim could not be verified at this time. Please review the staff notes above for more information.</p>
+  <div style="text-align: center;">
+    <a href="{{clientUrl}}/claims/{{claimId}}" class="button">View Claim Details</a>
+  </div>
+{{else}}
+  <div style="text-align: center;">
+    <a href="{{clientUrl}}/claims/{{claimId}}" class="button">View Claim Details</a>
+  </div>
+{{/if}}
+
+{{> footer}}

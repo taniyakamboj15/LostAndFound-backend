@@ -1,0 +1,25 @@
+{{> header title="Pickup Reminder"}}
+
+<p>Hello,</p>
+
+<p>This is a friendly reminder that your pickup is scheduled for <strong>tomorrow</strong>.</p>
+
+<div class="info-card">
+  <p><strong>📅 Date:</strong> {{pickupDate}}</p>
+  <p><strong>Wait Time:</strong> {{startTime}} - {{endTime}}</p>
+  <p><strong>📍 Location:</strong> Main Lost & Found Office</p>
+</div>
+
+<div style="background-color: #fffbeb; border: 1px solid #f59e0b; border-radius: 8px; padding: 16px; margin: 20px 0;">
+  <p style="color: #92400e; margin: 0; font-weight: 600;">Verification Required</p>
+  <p style="color: #92400e; margin: 8px 0 0 0; font-size: 14px;">Please bring your Reference Code and a valid Government-issued ID to complete the pickup.</p>
+  <p style="color: #92400e; margin: 12px 0 0 0; font-size: 20px; font-weight: 700; text-align: center; letter-spacing: 2px;">{{referenceCode}}</p>
+</div>
+
+<div style="text-align: center;">
+  <a href="{{clientUrl}}/pickups/{{pickupId}}" class="button">View Pickup Details</a>
+</div>
+
+<p>If you cannot make it at this time, please visit the platform to reschedule or cancel your pickup.</p>
+
+{{> footer}}

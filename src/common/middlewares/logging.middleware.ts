@@ -1,0 +1,25 @@
+import { Request, Response, NextFunction } from 'express';
+import logger from '../utils/logger';
+
+export const requestLogger = (req: Request, res: Response, next: NextFunction) => {
+  const start = Date.now();
+  
+
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    const { method, originalUrl, ip } = req;
+    const { statusCode } = res;
+
+    const message = `${method} ${originalUrl} ${statusCode} - ${duration}ms`;
+
+    if (statusCode >= 500) {
+      logger.error(message, { method, url: originalUrl, statusCode, duration, ip });
+    } else if (statusCode >= 400) {
+      logger.warn(message, { method, url: originalUrl, statusCode, duration, ip });
+    } else {
+      logger.info(message, { method, url: originalUrl, statusCode, duration, ip });
+    }
+  });
+
+  next();
+};
