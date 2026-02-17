@@ -48,10 +48,13 @@ class ClaimController {
 
   getAllClaims = asyncHandler(
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-      const { status, page = 1, limit = 20 } = req.query;
+      const { status, keyword, page = 1, limit = 20 } = req.query;
 
       const result = await claimService.getAllClaims(
-        { status: status as never },
+        { 
+          status: status as never,
+          keyword: keyword as string 
+        },
         {
           page: parseInt(page as string),
           limit: parseInt(limit as string),

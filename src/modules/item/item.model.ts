@@ -1,5 +1,5 @@
 import mongoose, { Schema } from 'mongoose';
-import { ItemStatus, ItemCategory, UploadedFile, IItemModel } from '../../common/types';
+import { ItemStatus, ItemCategory, IItemModel } from '../../common/types';
 
 export interface IItem extends IItemModel {
   finderContact?: {

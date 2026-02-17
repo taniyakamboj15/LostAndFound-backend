@@ -340,3 +340,28 @@ export interface Tokens {
   accessToken: string;
   refreshToken: string;
 }
+
+
+export interface LogActivityParams {
+  action: ActivityAction;
+  userId: string;
+  entityType: string;
+  entityId: string;
+  metadata?: Record<string, unknown>;
+  ipAddress?: string;
+  userAgent?: string;
+}
+export interface CreateItemData {
+  category: ItemCategory;
+  description: string;
+  photos: UploadedFile[];
+  locationFound: string;
+  dateFound: Date;
+  registeredBy: string;
+  isHighValue?: boolean;
+  estimatedValue?: number;
+  finderContact?: {
+    email?: string;
+    phone?: string;
+  };
+}

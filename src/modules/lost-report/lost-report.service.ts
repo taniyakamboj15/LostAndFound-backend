@@ -35,7 +35,7 @@ class LostReportService {
     });
 
     // Trigger matching engine
-    await matchService.generateMatches(report._id.toString());
+    await matchService.generateMatches({ lostReportId: report._id.toString() });
 
     return report;
   }
@@ -82,7 +82,11 @@ class LostReportService {
     }
 
     if (filters.keyword) {
-      query.$text = { $search: filters.keyword };
+      query.$or = [
+        { description: { $regex: filters.keyword, $options: 'i' } },
+        { locationLost: { $regex: filters.keyword, $options: 'i' } },
+        { category: { $regex: filters.keyword, $options: 'i' } }
+      ];
     }
 
     const total = await LostReport.countDocuments(query);

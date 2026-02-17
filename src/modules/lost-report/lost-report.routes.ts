@@ -19,7 +19,7 @@ router.use(authenticate);
 // Create lost report (Claimant)
 router.post(
   '/',
-  requireRole(UserRole.CLAIMANT),
+  requireRole(UserRole.CLAIMANT , UserRole.ADMIN , UserRole.STAFF),
   strictLimiter,
   validate(createLostReportValidation),
   lostReportController.createReport

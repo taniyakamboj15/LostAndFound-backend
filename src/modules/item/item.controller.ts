@@ -1,10 +1,7 @@
 import { Request, Response } from 'express';
 import { asyncHandler } from '../../common/helpers/asyncHandler';
-import { AuthenticatedRequest, MulterRequest } from '../../common/types';
+import { AuthenticatedRequest, MulterRequest, ItemCategory } from '../../common/types';
 import itemService from './item.service';
-import { ItemStatus } from '../../common/types';
-import { FilterQuery } from 'mongoose';
-import { IItem } from './item.model';
 
 /**
  * @swagger
@@ -218,43 +215,26 @@ class ItemController {
     async (req: Request, res: Response): Promise<void> => {
       const { category, location, dateFoundFrom, dateFoundTo, keyword, page = 1, limit = 20 } = req.query;
 
-      // Only search AVAILABLE items for public
-      const filter: FilterQuery<IItem> = { status: ItemStatus.AVAILABLE };
-
-      if (category) filter.category = category;
-      if (location) filter.locationFound = { $regex: location, $options: 'i' };
-      
-      if (dateFoundFrom || dateFoundTo) {
-        filter.dateFound = {};
-        if (dateFoundFrom) filter.dateFound.$gte = new Date(dateFoundFrom as string);
-        if (dateFoundTo) filter.dateFound.$lte = new Date(dateFoundTo as string);
-      }
-
-      if (keyword) {
-        filter.$or = [
-          { description: { $regex: keyword, $options: 'i' } },
-          { keywords: { $in: [new RegExp(keyword as string, 'i')] } },
-          { locationFound: { $regex: keyword, $options: 'i' } }
-        ];
-      }
-
-      // Reuse the service's searchItems but with the forced public filter
-      // We process result to only return public-safe fields ideally, 
-      // but for now relying on backend transformation or just sending as is (assuming no sensitive data in basic item model)
-      // Item model has: registeredBy, finderName, finderContact - these are sensitive.
-      // Ideally we should select fields. But ItemService.searchItems returns Mongoose docs or objects.
-      
-      const result = await itemService.searchItems(filter, {
-           page: parseInt(page as string),
-           limit: parseInt(limit as string),
-           sortBy: 'dateFound',
-           sortOrder: 'desc'
-      });
+      const result = await itemService.publicSearchItems(
+        {
+          category: category as ItemCategory,
+          location: location as string,
+          dateFoundFrom: dateFoundFrom ? new Date(dateFoundFrom as string) : undefined,
+          dateFoundTo: dateFoundTo ? new Date(dateFoundTo as string) : undefined,
+          keyword: keyword as string,
+        },
+        {
+          page: parseInt(page as string),
+          limit: parseInt(limit as string),
+          sortBy: 'dateFound',
+          sortOrder: 'desc',
+        }
+      );
 
       res.json({
         success: true,
         data: result.data,
-        pagination: result.pagination
+        pagination: result.pagination,
       });
     }
   );

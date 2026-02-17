@@ -1,5 +1,6 @@
 import Claim, { IClaim } from './claim.model';
 import Item from '../item/item.model';
+import User from '../user/user.model';
 import { ClaimStatus, ItemStatus } from '../../common/types';
 import { NotFoundError, ValidationError } from '../../common/errors';
 import activityService from '../activity/activity.service';
@@ -96,12 +97,43 @@ class ClaimService {
   }
 
   async getAllClaims(
-    filters: { status?: ClaimStatus },
+    filters: { status?: ClaimStatus; keyword?: string },
     pagination: { page: number; limit: number }
   ): Promise<{ data: IClaim[]; total: number }> {
     const query: Record<string, unknown> = {};
+    
     if (filters.status) {
       query.status = filters.status;
+    }
+
+    if (filters.keyword) {
+      const keywordRegex = new RegExp(filters.keyword, 'i');
+      
+      // Find matching items
+      const matchingItems = await Item.find({
+        $or: [
+          { description: keywordRegex },
+          { locationFound: keywordRegex }
+        ]
+      }).select('_id');
+      const itemIds = matchingItems.map(item => item._id);
+
+      // Find matching users (claimants)
+      const matchingUsers = await User.find({
+        $or: [
+          { name: keywordRegex },
+          { email: keywordRegex }
+        ]
+      }).select('_id');
+      const userIds = matchingUsers.map(user => user._id);
+
+      query.$or = [
+        { description: keywordRegex }, // Claim description
+        { rejectionReason: keywordRegex },
+        { verificationNotes: keywordRegex },
+        { itemId: { $in: itemIds } },
+        { claimantId: { $in: userIds } }
+      ];
     }
 
     const total = await Claim.countDocuments(query);

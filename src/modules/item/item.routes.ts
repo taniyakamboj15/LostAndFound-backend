@@ -22,6 +22,9 @@ router.get(
   itemController.searchPublicItems
 );
 
+// Get item by ID (Public)
+router.get('/:id', itemController.getItemById);
+
 // All other routes require authentication
 router.use(authenticate);
 
@@ -44,8 +47,6 @@ router.get(
 
 
 
-// Get item by ID
-router.get('/:id', itemController.getItemById);
 
 // Update item status (Staff/Admin)
 router.patch(

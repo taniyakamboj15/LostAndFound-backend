@@ -6,26 +6,13 @@ import {
   ItemSearchFilters,
   PaginatedResponse,
   PaginationParams,
-  UploadedFile,
 } from '../../common/types';
 import { NotFoundError, ValidationError } from '../../common/errors';
 import activityService from '../activity/activity.service';
 import { ActivityAction } from '../../common/types';
+import matchService from '../match/match.service';
+import { CreateItemData } from '../../common/types';
 
-interface CreateItemData {
-  category: ItemCategory;
-  description: string;
-  photos: UploadedFile[];
-  locationFound: string;
-  dateFound: Date;
-  registeredBy: string;
-  isHighValue?: boolean;
-  estimatedValue?: number;
-  finderContact?: {
-    email?: string;
-    phone?: string;
-  };
-}
 
 class ItemService {
   async createItem(data: CreateItemData): Promise<IItem> {
@@ -63,6 +50,11 @@ class ItemService {
         category: item.category,
         locationFound: item.locationFound,
       },
+    });
+
+    // Trigger matching engine for the new item
+    matchService.generateMatches({ itemId: item._id.toString() }).catch(err => {
+        console.error('Error generating matches for new item:', err);
     });
 
     return item;
@@ -110,7 +102,11 @@ class ItemService {
     }
 
     if (filters.keyword) {
-      query.$text = { $search: filters.keyword };
+      query.$or = [
+        { description: { $regex: filters.keyword, $options: 'i' } },
+        { locationFound: { $regex: filters.keyword, $options: 'i' } },
+        { category: { $regex: filters.keyword, $options: 'i' } }
+      ];
     }
 
     const total = await Item.countDocuments(query);

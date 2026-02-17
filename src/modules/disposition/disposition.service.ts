@@ -13,7 +13,7 @@ class DispositionService {
     recipient?: string;
     notes?: string;
   }): Promise<IDisposition> {
-    // Verify item exists and is expired/available
+  
     const item = await Item.findById(data.itemId);
 
     if (!item) {

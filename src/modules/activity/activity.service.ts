@@ -1,15 +1,6 @@
 import Activity, { IActivity } from './activity.model';
 import { ActivityAction, PaginatedResponse, PaginationParams } from '../../common/types';
-
-interface LogActivityParams {
-  action: ActivityAction;
-  userId: string;
-  entityType: string;
-  entityId: string;
-  metadata?: Record<string, unknown>;
-  ipAddress?: string;
-  userAgent?: string;
-}
+import { LogActivityParams } from '../../common/types';
 
 class ActivityService {
   async logActivity(params: LogActivityParams): Promise<IActivity> {

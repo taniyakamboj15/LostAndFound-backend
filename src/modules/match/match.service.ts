@@ -8,62 +8,88 @@ import { NotificationEvent } from '../../common/types';
 
 class MatchService {
   private readonly MATCH_THRESHOLD = parseFloat(
-    process.env.MATCH_CONFIDENCE_THRESHOLD || '0.6'
+    process.env.MATCH_CONFIDENCE_THRESHOLD || '0.4'
   );
   private readonly NOTIFICATION_THRESHOLD = parseFloat(
-    process.env.MATCH_NOTIFICATION_THRESHOLD || '0.8'
+    process.env.MATCH_NOTIFICATION_THRESHOLD || '0.5'
   );
 
-  async generateMatches(lostReportId: string): Promise<IMatch[]> {
-    const report = await LostReport.findById(lostReportId);
-
-    if (!report) {
-      throw new NotFoundError('Lost report not found');
-    }
-
-    // Find available items in same category
-    const items = await Item.find({
-      category: report.category,
-      status: 'AVAILABLE',
-    });
-
+  async generateMatches(source: { lostReportId?: string; itemId?: string }): Promise<IMatch[]> {
     const matches: IMatch[] = [];
 
-    for (const item of items) {
-      const score = this.calculateMatchScore(item, report);
+    if (source.lostReportId) {
+      // Case 1: New Lost Report -> Search for existing Items
+      const report = await LostReport.findById(source.lostReportId);
+      if (!report) throw new NotFoundError('Lost report not found');
 
-      if (score.totalScore >= this.MATCH_THRESHOLD) {
-        const match = await Match.create({
-          itemId: item._id,
-          lostReportId: report._id,
-          confidenceScore: score.totalScore,
-          categoryScore: score.categoryScore,
-          keywordScore: score.keywordScore,
-          dateScore: score.dateScore,
-          locationScore: score.locationScore,
-        });
+      const items = await Item.find({
+        category: report.category,
+        status: 'AVAILABLE',
+      });
 
-        matches.push(match);
+      for (const item of items) {
+        const score = this.calculateMatchScore(item, report);
+        if (score.totalScore >= this.MATCH_THRESHOLD) {
+          const match = await this.createMatch(item._id.toString(), report._id.toString(), score);
+          matches.push(match);
+          
+          await this.triggerNotification(match, report.reportedBy.toString(), score.totalScore);
+        }
+      }
+    } else if (source.itemId) {
+      // Case 2: New Item -> Search for existing Lost Reports
+      const item = await Item.findById(source.itemId);
+      if (!item) throw new NotFoundError('Item not found');
 
-        // Send notification for high-confidence matches
-        if (score.totalScore >= this.NOTIFICATION_THRESHOLD) {
-          await notificationService.queueNotification({
-            event: NotificationEvent.MATCH_FOUND,
-            userId: report.reportedBy.toString(),
-            data: {
-              matchId: match._id.toString(),
-              itemId: item._id.toString(),
-              confidenceScore: score.totalScore,
-            },
-          });
+      const reports = await LostReport.find({
+        category: item.category,
+      });
 
-          match.notified = true;
-          await match.save();
+      for (const report of reports) {
+        const score = this.calculateMatchScore(item, report);
+        if (score.totalScore >= this.MATCH_THRESHOLD) {
+          const match = await this.createMatch(item._id.toString(), report._id.toString(), score);
+          matches.push(match);
+
+          await this.triggerNotification(match, report.reportedBy.toString(), score.totalScore);
         }
       }
     }
 
     return matches;
+  }
+
+  private async createMatch(itemId: string, lostReportId: string, score: MatchScore): Promise<IMatch> {
+    // Check if match already exists to avoid duplicates
+    const existingMatch = await Match.findOne({ itemId, lostReportId });
+    if (existingMatch) return existingMatch;
+
+    return Match.create({
+      itemId,
+      lostReportId,
+      confidenceScore: score.totalScore,
+      categoryScore: score.categoryScore,
+      keywordScore: score.keywordScore,
+      dateScore: score.dateScore,
+      locationScore: score.locationScore,
+    });
+  }
+
+  private async triggerNotification(match: IMatch, userId: string, score: number): Promise<void> {
+    if (score >= this.NOTIFICATION_THRESHOLD && !match.notified) {
+      await notificationService.queueNotification({
+        event: NotificationEvent.MATCH_FOUND,
+        userId,
+        data: {
+          matchId: match._id.toString(),
+          itemId: match.itemId.toString(),
+          confidenceScore: score,
+        },
+      });
+
+      match.notified = true;
+      await match.save();
+    }
   }
 
   async getMatchesForReport(lostReportId: string): Promise<IMatch[]> {
