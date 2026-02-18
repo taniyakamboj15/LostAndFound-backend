@@ -75,9 +75,8 @@ async function startServer(): Promise<void> {
     await connectDB();
     await connectRedis();
 
-    // Initialize background jobs
+    // Initialize repeatable job schedules (does NOT start worker consumers)
     await jobService.initializeRepeatableJobs();
-    jobService.setupWorker();
 
     server = app.listen(PORT, () => {
       logger.info(`Server running on port ${PORT} in ${process.env.NODE_ENV} mode`);

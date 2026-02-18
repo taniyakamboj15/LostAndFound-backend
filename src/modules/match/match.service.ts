@@ -72,6 +72,7 @@ class MatchService {
       keywordScore: score.keywordScore,
       dateScore: score.dateScore,
       locationScore: score.locationScore,
+      featureScore: score.featureScore,
     });
   }
 
@@ -107,8 +108,8 @@ class MatchService {
   }
 
   private calculateMatchScore(
-    item: { keywords: string[]; dateFound: Date; locationFound: string },
-    report: { keywords: string[]; dateLost: Date; locationLost: string }
+    item: { keywords: string[]; dateFound: Date; locationFound: string; identifyingFeatures?: string[] },
+    report: { keywords: string[]; dateLost: Date; locationLost: string; identifyingFeatures?: string[] }
   ): MatchScore {
     // Category score (already filtered, so 1.0)
     const categoryScore = 1.0;
@@ -128,21 +129,53 @@ class MatchService {
       report.locationLost
     );
 
+    // Feature score
+    const featureScore = this.calculateFeatureScore(
+      item.identifyingFeatures || [],
+      report.identifyingFeatures || []
+    );
+
     // Weighted total score
-    // Increased weight for Keywords and Location as they are most specific
+    // Updated weights: Keywords 0.3, Location 0.2, Date 0.1, Features 0.3, Category 0.1
     const totalScore =
-      categoryScore * 0.2 +
-      keywordScore * 0.4 +
+      categoryScore * 0.1 +
+      keywordScore * 0.3 +
       dateScore * 0.1 +
-      locationScore * 0.3;
+      locationScore * 0.2 +
+      featureScore * 0.3;
 
     return {
       categoryScore,
       keywordScore,
       dateScore,
       locationScore,
+      featureScore,
       totalScore,
     };
+  }
+
+  private calculateFeatureScore(itemFeatures: string[], reportFeatures: string[]): number {
+    if (!itemFeatures.length || !reportFeatures.length) return 0;
+
+    // Normalize features
+    const f1 = itemFeatures.map(f => this.normalizeText(f));
+    const f2 = reportFeatures.map(f => this.normalizeText(f));
+
+    let matchCount = 0;
+    
+    // Check for fuzzy matches between features
+    for (const feat1 of f1) {
+      for (const feat2 of f2) {
+        if (feat1 === feat2 || feat1.includes(feat2) || feat2.includes(feat1)) {
+          matchCount++;
+          break; // Count each item feature at most once
+        }
+      }
+    }
+
+    // Score is based on the proportion of report features matched
+    // We prioritize matching what the loser reported
+    return Math.min(matchCount / f2.length, 1.0);
   }
 
   private normalizeText(text: string): string {

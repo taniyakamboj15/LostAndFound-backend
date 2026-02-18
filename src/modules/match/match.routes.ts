@@ -5,16 +5,20 @@ import { requireRole } from '../../common/middlewares/rbac.middleware';
 import { validate } from '../../common/middlewares/validation.middleware';
 import { generateMatchesValidation, getMatchesValidation } from './match.validation';
 import { UserRole } from '../../common/types';
+import { verifyReportOwnership } from '../lost-report/lost-report.middleware';
 
 const router = Router();
 
 // All routes require authentication
 router.use(authenticate);
 
+
+
 // Get matches for a report (Claimant - own reports, Staff/Admin - all)
 router.get(
   '/report/:reportId',
   validate(getMatchesValidation),
+  verifyReportOwnership,
   matchController.getMatchesForReport
 );
 

@@ -46,6 +46,10 @@ export const getAllClaimsValidation = [
   query('status')
     .optional()
     .isIn(Object.values(ClaimStatus)),
+  query('itemId')
+    .optional()
+    .isMongoId()
+    .withMessage('Invalid item ID'),
   query('page')
     .optional()
     .isInt({ min: 1 }),

@@ -48,6 +48,12 @@ const matchSchema = new Schema<IMatch>(
       min: 0,
       max: 1,
     },
+    featureScore: {
+      type: Number,
+      required: true,
+      min: 0,
+      max: 1,
+    },
     notified: {
       type: Boolean,
       default: false,

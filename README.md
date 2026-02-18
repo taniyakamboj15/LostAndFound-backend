@@ -39,6 +39,7 @@ This repository contains the **Backend** API, built with Node.js, Express, and M
 - **Disposition Workflows**: Automated handling for unclaimed items (Donate/Auction/Dispose).
 - **Advanced Analytics**: Metrics for recovery rates, category trends, and staff performance.
 - **Notification Service**: Asynchronous email notifications via BullMQ + Redis.
+- **AI Assistant Chatbot**: Intelligent chatbot powered by Google Gemini/Groq for helping users find items and clarifying policies.
 - **Security**: RBAC (Role-Based Access Control), Rate Limiting, Input Sanitization.
 - **Public Access**: Unauthenticated users can browse found items.
 
@@ -58,7 +59,7 @@ This repository contains the **Backend** API, built with Node.js, Express, and M
 src/
 ├── modules/        # Domain-driven feature modules (Item, User, Claim, etc.)
 ├── common/         # Shared middlewares, types, and helpers
-├── config/         # Configuration (DB, Redis, Email)
+├── config/         # Configuration (DB, Redis, Cloudinary)
 ├── routes/         # API routes
 └── server.ts       # Application entry point
 ```
@@ -387,6 +388,20 @@ await addToNewStorage(newStorageId);
 
 ## 🆕 Recent Updates (February 2026)
 
+### Wed Update (February 18, 2026) ✨ - `wed-branch`
+> **Featured**: Documentation & AI Integration
+> This update was implemented using **AI Agentic Coding (Antigravity)**.
+
+#### AI & Integrations
+
+- ✅ **AI Assistant Enhancement**: Refactored the chat module to use Google Gemini/Groq for smarter query handling.
+- ✅ **Swagger Documentation**: Added comprehensive Swagger/OpenAPI documentation to **ALL** backend controllers (12+ modules).
+- ✅ **Type Safety**: Eliminated `any` from core services and controllers, ensuring strict TypeScript compliance.
+
+#### Code Cleanup & Documentation
+- ✅ **JSDoc/Swagger**: Every endpoint now has detailed request/response schemas.
+- ✅ **Error Handling**: Standardized error classes for better API consistency.
+
 ### Today's Updates (February 17, 2026) 🔥
 
 > **View all changes:** Checkout the `today_update` branch to see all of today's improvements in detail.
@@ -410,6 +425,29 @@ await addToNewStorage(newStorageId);
 - ✅ **Feature Workflows**: Mermaid diagrams for all major flows
 - ✅ **Architecture Diagrams**: System architecture visualization
 - ✅ **Future Enhancements**: Detailed roadmap with 8+ planned features
+
+## 🤖 AI Assistant (Chatbot) Guide
+
+### How it Works 🧠
+The AI Assistant is a sophisticated conversational agent integrated into the platform to streamline item recovery.
+- **Engine**: Powered by **Google Gemini** models via **Groq** for ultra-fast, high-quality natural language processing.
+- **Context Aware**: It understands your history, including your lost reports and existing found items.
+- **Conversational Logic**: Uses a state-based session manager to guide users through complex workflows like report filing.
+
+### What it can do? 🛠️
+- **Search Items**: Ask "kya koi black bag mila hai?" and it will search our public and private database.
+- **Check Your Status**: Ask "mere reports ka kya hua?" or "kya mera match mil gaya?" to get instant updates.
+- **Check Pickups**: Ask "mera pickup kab hai?" to see your scheduled slot.
+- **File a Report**: Don't want to fill out a long form? Just say "mujhe report file krni hai" and it will guide you step-by-step to gather all details.
+- **General Help**: Ask about return policies, pickup locations, or how to verify your identity.
+
+### ⚠️ Usage Restrictions & Guards
+To ensure security and prevent platform abuse, the following restrictions apply:
+1. **Authentication Required**: You must be logged in to chat with the assistant.
+2. **Email Verification MANDATORY**: 
+   - **Crucial**: If your email is **NOT verified**, the chatbot will be disabled for you.
+   - You must click the verification link sent to your email during registration before you can start a chat session.
+3. **Session Management**: Sessions expire after 2 hours of inactivity to save resources and ensure data privacy.
 
 ### Storage Management Enhancements
 - ✅ **Automatic Capacity Validation**: Storage locations now strictly enforce capacity limits when items are added

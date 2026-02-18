@@ -119,6 +119,16 @@ class SessionController {
     });
   });
 
+  /**
+   * @swagger
+   * /api/auth/refresh:
+   *   post:
+   *     summary: Refresh access token using refresh token cookie
+   *     tags: [Authentication]
+   *     responses:
+   *       200:
+   *         description: Token refreshed successfully
+   */
   refresh = asyncHandler(async (req, res: Response): Promise<void> => {
     const refreshToken = req.cookies?.refreshToken;
 

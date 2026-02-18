@@ -7,7 +7,7 @@ import {
 import { NotFoundError } from '../../common/errors';
 import activityService from '../activity/activity.service';
 import { ActivityAction } from '../../common/types';
-import matchService from '../match/match.service';
+import * as matchQueue from '../match/match.queue';
 
 class LostReportService {
   async createLostReport(data: {
@@ -35,7 +35,8 @@ class LostReportService {
     });
 
     // Trigger matching engine
-    await matchService.generateMatches({ lostReportId: report._id.toString() });
+    // await matchService.generateMatches({ lostReportId: report._id.toString() });
+    await matchQueue.addMatchJob({ type: 'REPORT_CREATED', id: report._id.toString() });
 
     return report;
   }
@@ -113,12 +114,41 @@ class LostReportService {
 
   async getMyReports(
     userId: string,
+    filters: LostReportSearchFilters,
     pagination: PaginationParams
   ): Promise<PaginatedResponse<ILostReport>> {
-    const total = await LostReport.countDocuments({ reportedBy: userId });
+    const query: Record<string, unknown> = { reportedBy: userId };
+
+    if (filters.category) {
+      query.category = filters.category;
+    }
+
+    if (filters.location) {
+      query.locationLost = new RegExp(filters.location, 'i');
+    }
+
+    if (filters.dateLostFrom || filters.dateLostTo) {
+      query.dateLost = {};
+      if (filters.dateLostFrom) {
+        (query.dateLost as Record<string, unknown>).$gte = filters.dateLostFrom;
+      }
+      if (filters.dateLostTo) {
+        (query.dateLost as Record<string, unknown>).$lte = filters.dateLostTo;
+      }
+    }
+
+    if (filters.keyword) {
+      query.$or = [
+        { description: { $regex: filters.keyword, $options: 'i' } },
+        { locationLost: { $regex: filters.keyword, $options: 'i' } },
+        { category: { $regex: filters.keyword, $options: 'i' } }
+      ];
+    }
+
+    const total = await LostReport.countDocuments(query);
     const totalPages = Math.ceil(total / pagination.limit);
 
-    const reports = await LostReport.find({ reportedBy: userId })
+    const reports = await LostReport.find(query)
       .sort({ createdAt: -1 })
       .skip((pagination.page - 1) * pagination.limit)
       .limit(pagination.limit);

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import pickupController from './pickup.controller';
-import { authenticate } from '../../common/middlewares/auth.middleware';
+import { authenticate, requireEmailVerification } from '../../common/middlewares/auth.middleware';
 import { requireRole } from '../../common/middlewares/rbac.middleware';
 import { validate } from '../../common/middlewares/validation.middleware';
 import {
@@ -27,6 +27,7 @@ router.get(
 router.post(
   '/',
   requireRole(UserRole.CLAIMANT),
+  requireEmailVerification,
   validate(bookPickupValidation),
   pickupController.bookPickup
 );

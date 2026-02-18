@@ -83,6 +83,12 @@ const itemSchema = new Schema<IItem>(
         trim: true,
       },
     ],
+    identifyingFeatures: [
+      {
+        type: String,
+        trim: true,
+      },
+    ],
     isHighValue: {
       type: Boolean,
       default: false,
@@ -99,7 +105,7 @@ itemSchema.index({ status: 1, retentionExpiryDate: 1 });
 itemSchema.index({ category: 1, status: 1 });
 itemSchema.index({ dateFound: -1 });
 itemSchema.index({ keywords: 1 });
-itemSchema.index({ locationFound: 'text', description: 'text' });
+itemSchema.index({ locationFound: 'text', description: 'text', identifyingFeatures: 'text' });
 
 // Pre-save hook to extract keywords
 itemSchema.pre('save', function (next) {

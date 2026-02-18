@@ -4,6 +4,7 @@ import { DispositionType, ItemStatus } from '../../common/types';
 import { NotFoundError, ValidationError } from '../../common/errors';
 import activityService from '../activity/activity.service';
 import { ActivityAction } from '../../common/types';
+import storageService from '../storage/storage.service';
 
 class DispositionService {
   async createDisposition(data: {
@@ -51,7 +52,20 @@ class DispositionService {
     });
 
     // Update item status
+    // Update item status
     item.status = ItemStatus.DISPOSED;
+    
+    // Remove from storage if exists
+    if (item.storageLocation) {
+      try {
+        await storageService.removeItemFromStorage(item.storageLocation.toString());
+        item.storageLocation = undefined;
+      } catch (error) {
+         console.error('Error removing from storage during disposition:', error);
+         // Log but allow disposition to proceed to avoid data lock
+      }
+    }
+
     await item.save();
 
     // Log activity

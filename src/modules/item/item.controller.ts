@@ -63,11 +63,10 @@ class ItemController {
         estimatedValue,
         contactEmail,
         contactPhone,
+        identifyingFeatures,
       } = req.body;
 
       const multerFiles = (req as MulterRequest).files || [];
-      
-      // Map to UploadedFile interface
       const photos = multerFiles.map(file => ({
         filename: file.filename,
         originalName: file.originalname,
@@ -90,6 +89,9 @@ class ItemController {
           email: contactEmail,
           phone: contactPhone,
         },
+        identifyingFeatures: typeof identifyingFeatures === 'string' 
+          ? identifyingFeatures.split(',').map((f: string) => f.trim()).filter((f: string) => f.length > 0)
+          : identifyingFeatures,
       });
 
       res.status(201).json({
@@ -168,6 +170,24 @@ class ItemController {
     }
   );
 
+  /**
+   * @swagger
+   * /api/items/{id}:
+   *   get:
+   *     summary: Get item details by ID
+   *     tags: [Items]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: Item details retrieved successfully
+   */
   getItemById = asyncHandler(
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       const item = await itemService.getItemById(req.params.id);
@@ -179,6 +199,36 @@ class ItemController {
     }
   );
 
+  /**
+   * @swagger
+   * /api/items/{id}/status:
+   *   patch:
+   *     summary: Update item status
+   *     tags: [Items]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - status
+   *             properties:
+   *               status:
+   *                 type: string
+   *                 enum: [AVAILABLE, CLAIM_FILED, VERIFIED, PICKED_UP, DISPOSED, AUCTIONED, DONATED]
+   *     responses:
+   *       200:
+   *         description: Item status updated successfully
+   */
   updateItemStatus = asyncHandler(
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       const { status } = req.body;
@@ -197,6 +247,35 @@ class ItemController {
     }
   );
 
+  /**
+   * @swagger
+   * /api/items/{id}/storage:
+   *   patch:
+   *     summary: Assign storage location to an item
+   *     tags: [Items]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - storageLocationId
+   *             properties:
+   *               storageLocationId:
+   *                 type: string
+   *     responses:
+   *       200:
+   *         description: Storage location assigned successfully
+   */
   assignStorage = asyncHandler(
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       const { storageLocationId } = req.body;
@@ -211,6 +290,49 @@ class ItemController {
     }
   );
 
+  /**
+   * @swagger
+   * /api/items/public/search:
+   *   get:
+   *     summary: Publicly search found items
+   *     tags: [Items]
+   *     parameters:
+   *       - in: query
+   *         name: category
+   *         schema:
+   *           type: string
+   *       - in: query
+   *         name: location
+   *         schema:
+   *           type: string
+   *       - in: query
+   *         name: dateFoundFrom
+   *         schema:
+   *           type: string
+   *           format: date
+   *       - in: query
+   *         name: dateFoundTo
+   *         schema:
+   *           type: string
+   *           format: date
+   *       - in: query
+   *         name: keyword
+   *         schema:
+   *           type: string
+   *       - in: query
+   *         name: page
+   *         schema:
+   *           type: integer
+   *           default: 1
+   *       - in: query
+   *         name: limit
+   *         schema:
+   *           type: integer
+   *           default: 20
+   *     responses:
+   *       200:
+   *         description: Public items retrieved successfully
+   */
   searchPublicItems = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
       const { category, location, dateFoundFrom, dateFoundTo, keyword, page = 1, limit = 20 } = req.query;

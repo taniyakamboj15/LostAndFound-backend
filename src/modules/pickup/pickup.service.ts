@@ -156,11 +156,32 @@ class PickupService {
 
   async getMyPickups(
     userId: string,
-    pagination: { page: number; limit: number }
+    pagination: { page: number; limit: number },
+    filters: PickupFilters = {}
   ): Promise<{ data: IPickup[]; total: number }> {
-    const total = await Pickup.countDocuments({ claimantId: userId });
+    const query: mongoose.FilterQuery<IPickup> = { claimantId: userId };
 
-    const pickups = await Pickup.find({ claimantId: userId })
+    if (filters.isCompleted !== undefined) {
+      query.isCompleted = filters.isCompleted === 'true';
+    }
+
+    if (filters.pickupDate) {
+      // Create date range for the entire day
+      const startOfDay = new Date(filters.pickupDate);
+      startOfDay.setHours(0, 0, 0, 0);
+      
+      const endOfDay = new Date(filters.pickupDate);
+      endOfDay.setHours(23, 59, 59, 999);
+      
+      query.pickupDate = {
+        $gte: startOfDay,
+        $lte: endOfDay
+      };
+    }
+
+    const total = await Pickup.countDocuments(query);
+
+    const pickups = await Pickup.find(query)
       .sort({ pickupDate: -1 })
       .skip((pagination.page - 1) * pagination.limit)
       .limit(pagination.limit)
@@ -281,7 +302,16 @@ class PickupService {
     }
 
     if (filters.pickupDate) {
-      query.pickupDate = new Date(filters.pickupDate);
+      const startOfDay = new Date(filters.pickupDate);
+      startOfDay.setHours(0, 0, 0, 0);
+      
+      const endOfDay = new Date(filters.pickupDate);
+      endOfDay.setHours(23, 59, 59, 999);
+      
+      query.pickupDate = {
+        $gte: startOfDay,
+        $lte: endOfDay
+      };
     }
 
     const total = await Pickup.countDocuments(query);

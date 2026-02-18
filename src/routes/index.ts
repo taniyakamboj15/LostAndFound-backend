@@ -10,6 +10,7 @@ import pickupRoutes from '../modules/pickup/pickup.routes';
 import dispositionRoutes from '../modules/disposition/disposition.routes';
 import analyticsRoutes from '../modules/analytics/analytics.routes';
 import activityRoutes from '../modules/activity/activity.routes';
+import chatRoutes from '../modules/chat/chat.routes';
 import { apiLimiter } from '../common/middlewares/rateLimit.middleware';
 import { sanitizeMiddleware } from '../common/middlewares/sanitize.middleware';
 const router = Router();
@@ -38,5 +39,6 @@ router.use('/pickups', pickupRoutes);
 router.use('/dispositions', dispositionRoutes);
 router.use('/analytics', analyticsRoutes);
 router.use('/activities', activityRoutes);
+router.use('/chat', chatRoutes);
 
 export default router;

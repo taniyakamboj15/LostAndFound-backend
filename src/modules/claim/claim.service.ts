@@ -82,11 +82,53 @@ class ClaimService {
 
   async getMyClaims(
     userId: string,
+    filters: { status?: ClaimStatus; keyword?: string; itemId?: string; date?: string },
     pagination: { page: number; limit: number }
   ): Promise<{ data: IClaim[]; total: number }> {
-    const total = await Claim.countDocuments({ claimantId: userId });
+    const query: any = { claimantId: userId };
 
-    const claims = await Claim.find({ claimantId: userId })
+    if (filters.status) {
+      query.status = filters.status;
+    }
+
+    if (filters.itemId) {
+      query.itemId = filters.itemId;
+    }
+
+    if (filters.date) {
+        const startOfDay = new Date(filters.date);
+        startOfDay.setHours(0, 0, 0, 0);
+        
+        const endOfDay = new Date(filters.date);
+        endOfDay.setHours(23, 59, 59, 999);
+        
+        query.createdAt = {
+          $gte: startOfDay,
+          $lte: endOfDay
+        };
+    }
+
+    if (filters.keyword) {
+      const keywordRegex = new RegExp(filters.keyword, 'i');
+      
+      // Find matching items
+      const matchingItems = await Item.find({
+        $or: [
+          { description: keywordRegex },
+          { locationFound: keywordRegex }
+        ]
+      }).select('_id');
+      const itemIds = matchingItems.map(item => item._id);
+
+      query.$or = [
+        { description: keywordRegex },
+        { itemId: { $in: itemIds } }
+      ];
+    }
+
+    const total = await Claim.countDocuments(query);
+
+    const claims = await Claim.find(query)
       .sort({ createdAt: -1 })
       .skip((pagination.page - 1) * pagination.limit)
       .limit(pagination.limit)
@@ -97,13 +139,17 @@ class ClaimService {
   }
 
   async getAllClaims(
-    filters: { status?: ClaimStatus; keyword?: string },
+    filters: { status?: ClaimStatus; keyword?: string; itemId?: string; date?: string },
     pagination: { page: number; limit: number }
   ): Promise<{ data: IClaim[]; total: number }> {
     const query: Record<string, unknown> = {};
     
     if (filters.status) {
       query.status = filters.status;
+    }
+
+    if (filters.itemId) {
+      query.itemId = filters.itemId;
     }
 
     if (filters.keyword) {
@@ -134,6 +180,19 @@ class ClaimService {
         { itemId: { $in: itemIds } },
         { claimantId: { $in: userIds } }
       ];
+    }
+    
+    if (filters.date) {
+        const startOfDay = new Date(filters.date);
+        startOfDay.setHours(0, 0, 0, 0);
+        
+        const endOfDay = new Date(filters.date);
+        endOfDay.setHours(23, 59, 59, 999);
+        
+        query.createdAt = {
+          $gte: startOfDay,
+          $lte: endOfDay
+        };
     }
 
     const total = await Claim.countDocuments(query);

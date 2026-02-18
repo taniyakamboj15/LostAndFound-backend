@@ -143,9 +143,9 @@ class AnalyticsService {
     claimed: number;
     returned: number;
   }[]> {
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
-    startDate.setHours(0, 0, 0, 0);
+    const now = new Date();
+    const startDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - days));
+    startDate.setUTCHours(0, 0, 0, 0);
 
     const [foundItems, claimedItems, returnedItems] = await Promise.all([
       // Found items based on createdAt
@@ -191,7 +191,7 @@ class AnalyticsService {
     // Initialize map with empty data for all days
     for (let i = 0; i <= days; i++) {
         const d = new Date(startDate);
-        d.setDate(d.getDate() + i);
+        d.setUTCDate(d.getUTCDate() + i);
         const dateStr = d.toISOString().split('T')[0];
         trendsMap[dateStr] = { found: 0, claimed: 0, returned: 0 };
     }
@@ -210,7 +210,7 @@ class AnalyticsService {
 
     return Object.entries(trendsMap)
       .map(([date, data]) => ({ date, ...data }))
-      .sort((a, b) => a.date.localeCompare(b.date));
+      .sort((a, b) => b.date.localeCompare(a.date));
   }
 
   async getDispositionStats(): Promise<{

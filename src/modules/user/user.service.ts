@@ -18,7 +18,7 @@ class UserService {
     }
 
     const emailVerificationToken = uuidv4();
-    const emailVerificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+    const emailVerificationExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
     const user = await User.create({
       ...data,
@@ -99,7 +99,7 @@ class UserService {
     }
 
     const emailVerificationToken = uuidv4();
-    const emailVerificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const emailVerificationExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
     user.emailVerificationToken = emailVerificationToken;
     user.emailVerificationExpires = emailVerificationExpires;

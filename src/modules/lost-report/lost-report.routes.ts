@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import lostReportController from './lost-report.controller';
-import { authenticate } from '../../common/middlewares/auth.middleware';
+import { authenticate, requireEmailVerification } from '../../common/middlewares/auth.middleware';
 import { requireRole } from '../../common/middlewares/rbac.middleware';
 import { validate } from '../../common/middlewares/validation.middleware';
 import {
@@ -20,6 +20,7 @@ router.use(authenticate);
 router.post(
   '/',
   requireRole(UserRole.CLAIMANT , UserRole.ADMIN , UserRole.STAFF),
+  requireEmailVerification,
   strictLimiter,
   validate(createLostReportValidation),
   lostReportController.createReport

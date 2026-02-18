@@ -10,8 +10,9 @@ import {
 import { NotFoundError, ValidationError } from '../../common/errors';
 import activityService from '../activity/activity.service';
 import { ActivityAction } from '../../common/types';
-import matchService from '../match/match.service';
 import { CreateItemData } from '../../common/types';
+import storageService from '../storage/storage.service';
+import * as matchQueue from '../match/match.queue';
 
 
 class ItemService {
@@ -31,6 +32,19 @@ class ItemService {
       size: file.size,
       uploadedAt: new Date(),
     }));
+
+    // Validate storage availability BEFORE creating the item
+    if (data.storageLocation) {
+        const storage = await storageService.getStorageById(data.storageLocation);
+        
+        if (!storage.isActive) {
+            throw new ValidationError('Selected storage location is inactive');
+        }
+        
+        if (storage.currentCount >= storage.capacity) {
+            throw new ValidationError(`Storage location "${storage.name}" is full (${storage.currentCount}/${storage.capacity})`);
+        }
+    }
 
     const item = await Item.create({
       ...data,
@@ -53,9 +67,18 @@ class ItemService {
     });
 
     // Trigger matching engine for the new item
-    matchService.generateMatches({ itemId: item._id.toString() }).catch(err => {
-        console.error('Error generating matches for new item:', err);
-    });
+    // matchService.generateMatches({ itemId: item._id.toString() }).catch(err => {
+    //     console.error('Error generating matches for new item:', err);
+    // });
+    await matchQueue.addMatchJob({ type: 'ITEM_CREATED', id: item._id.toString() });
+
+    // Assign to storage if location provided (to update counts)
+    if (data.storageLocation) {
+        // We already validated capacity, so we can proceed directly
+        await storageService.assignItemToStorage(item._id.toString(), data.storageLocation);
+        // Re-fetch item to get populated storage
+        return this.getItemById(item._id.toString());
+    }
 
     return item;
   }
@@ -105,7 +128,8 @@ class ItemService {
       query.$or = [
         { description: { $regex: filters.keyword, $options: 'i' } },
         { locationFound: { $regex: filters.keyword, $options: 'i' } },
-        { category: { $regex: filters.keyword, $options: 'i' } }
+        { category: { $regex: filters.keyword, $options: 'i' } },
+        { identifyingFeatures: { $regex: filters.keyword, $options: 'i' } }
       ];
     }
 
@@ -170,6 +194,19 @@ class ItemService {
     this.validateStatusTransition(item.status, status);
 
     item.status = status;
+    
+    // If item is being returned or disposed, remove from storage
+    if ((status === ItemStatus.RETURNED || status === ItemStatus.DISPOSED) && item.storageLocation) {
+      try {
+        await storageService.removeItemFromStorage(item.storageLocation.toString());
+        item.storageLocation = undefined;
+      } catch (error) {
+        console.error('Error removing from storage during status update:', error);
+        // We don't throw here to avoid blocking the status update, 
+        // but in a strict system we might want to transactionally ensure consistency.
+      }
+    }
+
     await item.save();
 
     // Log activity
@@ -192,9 +229,6 @@ class ItemService {
     storageLocationId: string
   ): Promise<IItem> {
     // Delegate to StorageService to ensure counts are updated
-    // We need to dynamically import StorageService to avoid circular dependency issues if any
-    const { default: storageService } = await import('../storage/storage.service');
-    
     await storageService.assignItemToStorage(itemId, storageLocationId);
     
     // Fetch and return the updated item

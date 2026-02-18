@@ -16,7 +16,8 @@ const connectDB = async (): Promise<void> => {
       serverSelectionTimeoutMS: 5000,
     });
 
-    logger.info(`MongoDB Connected: ${conn.connection.host}`);
+    const host = conn.connection.host || new URL(mongoURI.replace('mongodb+srv://', 'https://')).hostname;
+    logger.info(`MongoDB Connected: ${host}`);
 
     mongoose.connection.on('error', (err) => {
       logger.error('MongoDB connection error:', err);

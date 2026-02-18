@@ -101,6 +101,27 @@ class UserController {
     }
   );
 
+  /**
+   * @swagger
+   * /api/users/verify-email:
+   *   post:
+   *     summary: Verify user email with token
+   *     tags: [Users]
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - token
+   *             properties:
+   *               token:
+   *                 type: string
+   *     responses:
+   *       200:
+   *         description: Email verified successfully
+   */
   verifyEmail = asyncHandler(async (req, res: Response): Promise<void> => {
     const { token } = req.body;
 
@@ -116,6 +137,28 @@ class UserController {
     });
   });
 
+  /**
+   * @swagger
+   * /api/users/resend-verification:
+   *   post:
+   *     summary: Resend verification email
+   *     tags: [Users]
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - email
+   *             properties:
+   *               email:
+   *                 type: string
+   *                 format: email
+   *     responses:
+   *       200:
+   *         description: Verification email sent
+   */
   resendVerification = asyncHandler(async (req, res: Response): Promise<void> => {
     const { email } = req.body;
 
@@ -127,6 +170,40 @@ class UserController {
     });
   });
 
+  /**
+   * @swagger
+   * /api/users:
+   *   post:
+   *     summary: Create a new user (Admin only)
+   *     tags: [Users]
+   *     security:
+   *       - bearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - name
+   *               - email
+   *               - password
+   *               - role
+   *             properties:
+   *               name:
+   *                 type: string
+   *               email:
+   *                 type: string
+   *                 format: email
+   *               password:
+   *                 type: string
+   *               role:
+   *                 type: string
+   *                 enum: [ADMIN, STAFF, CLAIMANT]
+   *     responses:
+   *       201:
+   *         description: User created successfully
+   */
   createUser = asyncHandler(async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     const { name, email, password, role } = req.body;
 
@@ -145,6 +222,23 @@ class UserController {
     });
   });
 
+  /**
+   * @swagger
+   * /api/users:
+   *   get:
+   *     summary: Get all users (Admin only)
+   *     tags: [Users]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: role
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: Users retrieved successfully
+   */
   getUsers = asyncHandler(async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     const { role } = req.query;
     const users = await userService.getAllUsers(role as string);

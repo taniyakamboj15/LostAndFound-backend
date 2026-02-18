@@ -3,7 +3,25 @@ import { asyncHandler } from '../../common/helpers/asyncHandler';
 import { AuthenticatedRequest } from '../../common/types';
 import analyticsService from './analytics.service';
 
+/**
+ * @swagger
+ * tags:
+ *   name: Analytics
+ *   description: Data visualization and metrics
+ */
 class AnalyticsController {
+  /**
+   * @swagger
+   * /api/analytics/dashboard:
+   *   get:
+   *     summary: Get high-level metrics for dashboard
+   *     tags: [Analytics]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Dashboard metrics retrieved successfully
+   */
   getDashboard = asyncHandler(
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       const metrics = await analyticsService.getDashboardMetrics(req.user!);
@@ -15,6 +33,18 @@ class AnalyticsController {
     }
   );
 
+  /**
+   * @swagger
+   * /api/analytics/categories:
+   *   get:
+   *     summary: Get breakdown of items by category
+   *     tags: [Analytics]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Category breakdown retrieved successfully
+   */
   getCategoryBreakdown = asyncHandler(
     async (_req: AuthenticatedRequest, res: Response): Promise<void> => {
       const breakdown = await analyticsService.getCategoryBreakdown();
@@ -26,6 +56,24 @@ class AnalyticsController {
     }
   );
 
+  /**
+   * @swagger
+   * /api/analytics/trends:
+   *   get:
+   *     summary: Get item trends over time
+   *     tags: [Analytics]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: days
+   *         schema:
+   *           type: integer
+   *           default: 30
+   *     responses:
+   *       200:
+   *         description: Item trends retrieved successfully
+   */
   getTrends = asyncHandler(
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       const days = parseInt(req.query.days as string) || 30;
@@ -39,6 +87,18 @@ class AnalyticsController {
     }
   );
 
+  /**
+   * @swagger
+   * /api/analytics/dispositions:
+   *   get:
+   *     summary: Get statistics on item dispositions
+   *     tags: [Analytics]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Disposition statistics retrieved successfully
+   */
   getDispositionStats = asyncHandler(
     async (_req: AuthenticatedRequest, res: Response): Promise<void> => {
       const stats = await analyticsService.getDispositionStats();

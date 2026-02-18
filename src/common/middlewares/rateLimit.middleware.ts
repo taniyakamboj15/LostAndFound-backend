@@ -18,6 +18,6 @@ export const createRateLimiter = (
 };
 
 // Specific rate limiters
-export const authLimiter = createRateLimiter(15 * 60 * 1000, 50000); // 5 requests per 15 minutes
+export const authLimiter = createRateLimiter(15 * 60 * 1000, 50); // 5 requests per 15 minutes
 export const apiLimiter = createRateLimiter(15 * 60 * 1000, 20000); // 100 requests per 15 minutes
 export const strictLimiter = createRateLimiter(60 * 60 * 1000, 10000); // 10 requests per hour

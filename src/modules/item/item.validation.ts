@@ -24,6 +24,13 @@ export const createItemValidation = [
   body('estimatedValue')
     .optional()
     .isFloat({ min: 0 }),
+  body('identifyingFeatures')
+    .optional()
+    .custom((value) => {
+        if (typeof value === 'string') return true;
+        if (Array.isArray(value)) return true;
+        throw new Error('Identifying features must be a string or array');
+    }),
 ];
 
 export const updateItemValidation = [

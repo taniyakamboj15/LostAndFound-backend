@@ -150,6 +150,7 @@ export interface MatchScore {
   keywordScore: number;
   dateScore: number;
   locationScore: number;
+  featureScore: number;
   totalScore: number;
 }
 
@@ -203,6 +204,7 @@ export interface IItemModel extends Document {
   registeredBy: Types.ObjectId;
   claimedBy?: Types.ObjectId;
   keywords: string[];
+  identifyingFeatures: string[];
   isHighValue: boolean;
   estimatedValue?: number;
   createdAt: Date;
@@ -302,6 +304,7 @@ export interface IMatchModel extends Document {
   keywordScore: number;
   dateScore: number;
   locationScore: number;
+  featureScore: number;
   notified: boolean;
   createdAt: Date;
 }
@@ -364,4 +367,6 @@ export interface CreateItemData {
     email?: string;
     phone?: string;
   };
+  identifyingFeatures?: string[];
+  storageLocation?: string;
 }
