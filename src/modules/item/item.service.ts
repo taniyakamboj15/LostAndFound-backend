@@ -33,7 +33,6 @@ class ItemService {
       uploadedAt: new Date(),
     }));
 
-    // Validate storage availability BEFORE creating the item
     if (data.storageLocation) {
         const storage = await storageService.getStorageById(data.storageLocation);
         
@@ -66,17 +65,12 @@ class ItemService {
       },
     });
 
-    // Trigger matching engine for the new item
-    // matchService.generateMatches({ itemId: item._id.toString() }).catch(err => {
-    //     console.error('Error generating matches for new item:', err);
-    // });
+
     await matchQueue.addMatchJob({ type: 'ITEM_CREATED', id: item._id.toString() });
 
-    // Assign to storage if location provided (to update counts)
+ 
     if (data.storageLocation) {
-        // We already validated capacity, so we can proceed directly
         await storageService.assignItemToStorage(item._id.toString(), data.storageLocation);
-        // Re-fetch item to get populated storage
         return this.getItemById(item._id.toString());
     }
 

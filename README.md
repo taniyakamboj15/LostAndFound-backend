@@ -389,8 +389,7 @@ await addToNewStorage(newStorageId);
 ## 🆕 Recent Updates (February 2026)
 
 ### Wed Update (February 18, 2026) ✨ - `wed-branch`
-> **Featured**: Documentation & AI Integration
-> This update was implemented using **AI Agentic Coding (Antigravity)**.
+> **Featured**: Documentation & AI Integration.
 
 #### AI & Integrations
 

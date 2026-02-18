@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { asyncHandler } from '../../common/helpers/asyncHandler';
-import { AuthenticatedRequest, MulterRequest, ItemCategory } from '../../common/types';
+import { AuthenticatedRequest, MulterRequest, ItemCategory, ItemStatus } from '../../common/types';
 import itemService from './item.service';
 
 /**
@@ -147,8 +147,8 @@ class ItemController {
 
       const result = await itemService.searchItems(
         {
-          category: category as never,
-          status: status as never,
+          category: category as ItemCategory,
+          status: status as ItemStatus,
           location: location as string,
           dateFoundFrom: dateFoundFrom ? new Date(dateFoundFrom as string) : undefined,
           dateFoundTo: dateFoundTo ? new Date(dateFoundTo as string) : undefined,

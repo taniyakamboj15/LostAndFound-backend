@@ -1,5 +1,6 @@
 import Storage, { IStorage } from './storage.model';
 import Item from '../item/item.model';
+import { Types } from 'mongoose';
 import { NotFoundError, ValidationError } from '../../common/errors';
 import { PaginatedResponse, PaginationParams } from '../../common/types';
 
@@ -84,12 +85,11 @@ class StorageService {
       throw new NotFoundError('Item not found');
     }
 
-    // Remove from old storage if exists
     if (item.storageLocation) {
       await this.removeItemFromStorage(item.storageLocation.toString());
     }
 
-    item.storageLocation = storageId as never;
+    item.storageLocation = new Types.ObjectId(storageId);
     await item.save();
 
     // Update storage count

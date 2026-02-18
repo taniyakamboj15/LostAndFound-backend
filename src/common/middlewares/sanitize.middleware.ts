@@ -1,12 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
 import mongoSanitize from 'express-mongo-sanitize';
 import xss from 'xss-clean';
+import logger from '../utils/logger';
 
 export const sanitizeInput = [
   mongoSanitize({
     replaceWith: '_',
     onSanitize: ({ key }) => {
-      console.warn(`Sanitized key: ${key}`);
+      logger.warn(`Sanitized key: ${key}`);
     },
   }),
   xss(),
