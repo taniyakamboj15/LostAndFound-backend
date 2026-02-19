@@ -9,7 +9,8 @@
     "start": "node dist/server.js",
     "worker": "ts-node-dev --respawn --transpile-only src/worker.ts",
     "lint": "eslint . --ext .ts",
-    "format": "prettier --write \"src/**/*.ts\""
+    "format": "prettier --write \"src/**/*.ts\"",
+    "test": "jest"
   },
   "keywords": [
     "lost-and-found",

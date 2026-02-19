@@ -1,3 +1,4 @@
+import { FilterQuery } from 'mongoose';
 import Claim, { IClaim } from './claim.model';
 import Item from '../item/item.model';
 import User from '../user/user.model';
@@ -85,7 +86,7 @@ class ClaimService {
     filters: { status?: ClaimStatus; keyword?: string; itemId?: string; date?: string },
     pagination: { page: number; limit: number }
   ): Promise<{ data: IClaim[]; total: number }> {
-    const query: any = { claimantId: userId };
+    const query: FilterQuery<IClaim> = { claimantId: userId };
 
     if (filters.status) {
       query.status = filters.status;
@@ -142,7 +143,7 @@ class ClaimService {
     filters: { status?: ClaimStatus; keyword?: string; itemId?: string; date?: string },
     pagination: { page: number; limit: number }
   ): Promise<{ data: IClaim[]; total: number }> {
-    const query: Record<string, unknown> = {};
+    const query: FilterQuery<IClaim> = {};
     
     if (filters.status) {
       query.status = filters.status;

@@ -3,7 +3,7 @@ import Item from '../item.model';
 import storageService from '../../storage/storage.service';
 import activityService from '../../activity/activity.service';
 import * as matchQueue from '../../match/match.queue';
-import { ItemCategory, ItemStatus } from '../../../common/types';
+import { ItemCategory, ItemStatus, CreateItemData } from '../../../common/types';
 
 // Mock dependencies
 jest.mock('../item.model');
@@ -18,7 +18,7 @@ describe('ItemService', () => {
 
     describe('createItem', () => {
         it('should create an item and trigger side effects', async () => {
-             const mockData = {
+             const mockData: CreateItemData = {
                 category: ItemCategory.ELECTRONICS,
                 description: 'Lost iPhone',
                 locationFound: 'Terminal 1',
@@ -40,7 +40,7 @@ describe('ItemService', () => {
              (activityService.logActivity as jest.Mock).mockResolvedValue({});
              (matchQueue.addMatchJob as jest.Mock).mockResolvedValue({});
 
-             const result = await itemService.createItem(mockData as any);
+             const result = await itemService.createItem(mockData);
 
              expect(Item.create).toHaveBeenCalled();
              expect(result).toHaveProperty('_id', 'item123');
@@ -49,7 +49,7 @@ describe('ItemService', () => {
         });
 
         it('should validate storage capacity if location provided', async () => {
-             const mockData = {
+             const mockData: CreateItemData = {
                 category: ItemCategory.CLOTHING,
                 description: 'Jacket',
                 locationFound: 'Lobby',
@@ -73,11 +73,11 @@ describe('ItemService', () => {
             // Improved mock for chained mongoose calls
             const mockQuery = {
                 populate: jest.fn().mockReturnThis(),
-                then: function(resolve: any) { resolve({ ...mockData, _id: 'item123' }); }
+                then: function(resolve: (value: unknown) => void) { resolve({ ...mockData, _id: 'item123' }); }
             };
             (Item.findById as jest.Mock).mockReturnValue(mockQuery);
 
-            await itemService.createItem(mockData as any);
+            await itemService.createItem(mockData);
 
             expect(storageService.getStorageById).toHaveBeenCalledWith('storage1');
             expect(storageService.assignItemToStorage).toHaveBeenCalledWith('item123', 'storage1');
@@ -89,7 +89,7 @@ describe('ItemService', () => {
             const mockItem = { _id: 'item123', description: 'Test' };
             const mockQuery = {
                 populate: jest.fn().mockReturnThis(),
-                then: function(resolve: any) { resolve(mockItem); }
+                then: function(resolve: (value: unknown) => void) { resolve(mockItem); }
             };
             (Item.findById as jest.Mock).mockReturnValue(mockQuery);
 
@@ -100,7 +100,7 @@ describe('ItemService', () => {
         it('should throw NotFoundError if not found', async () => {
              const mockQuery = {
                 populate: jest.fn().mockReturnThis(),
-                then: function(resolve: any) { resolve(null); }
+                then: function(resolve: (value: unknown) => void) { resolve(null); }
             };
             (Item.findById as jest.Mock).mockReturnValue(mockQuery);
 

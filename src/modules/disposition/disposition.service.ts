@@ -51,18 +51,15 @@ class DispositionService {
       ],
     });
 
-    // Update item status
-    // Update item status
     item.status = ItemStatus.DISPOSED;
-    
-    // Remove from storage if exists
+   
     if (item.storageLocation) {
       try {
         await storageService.removeItemFromStorage(item.storageLocation.toString());
         item.storageLocation = undefined;
       } catch (error) {
          console.error('Error removing from storage during disposition:', error);
-         // Log but allow disposition to proceed to avoid data lock
+      
       }
     }
 

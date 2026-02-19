@@ -2,13 +2,11 @@ import matchService from '../match.service';
 import Match from '../match.model';
 import Item from '../../item/item.model';
 import LostReport from '../../lost-report/lost-report.model';
-import notificationService from '../../notification/notification.service';
 
 // Mock mongoose models
 jest.mock('../match.model');
 jest.mock('../../item/item.model');
 jest.mock('../../lost-report/lost-report.model');
-jest.mock('../../notification/notification.service');
 
 describe('MatchService', () => {
   beforeEach(() => {

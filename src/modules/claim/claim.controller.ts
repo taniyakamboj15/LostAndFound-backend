@@ -230,10 +230,7 @@ class ClaimController {
         throw new ForbiddenError('You do not have permission to view this claim');
       }
 
-      // Fetch timeline from Activity logs
-      // We need to dynamically import Activity model to avoid circular dependency if any, 
-      // or just import it at top if safe. 
-      // Safe to import here as it is not used in model definition.
+
       const { default: Activity } = await import('../activity/activity.model');
       
       const activities = await Activity.find({
@@ -245,7 +242,9 @@ class ClaimController {
 
       const timeline = activities.map(activity => ({
         action: activity.action.replace(/_/g, ' '), // e.g. CLAIM_FILED -> CLAIM FILED
-        actor: (activity.userId as any).name || 'System',
+        actor: (activity.userId && typeof activity.userId === 'object' && 'name' in activity.userId) 
+          ? (activity.userId as { name: string }).name 
+          : 'System',
         timestamp: activity.createdAt
       }));
 

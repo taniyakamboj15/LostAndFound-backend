@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import { asyncHandler } from '../../common/helpers/asyncHandler';
-import { AuthenticatedRequest } from '../../common/types';
+import { AuthenticatedRequest, LostReportSearchFilters, ItemCategory } from '../../common/types';
 import lostReportService from './lost-report.service';
 
 /**
@@ -140,13 +140,14 @@ class LostReportController {
         limit = 20,
       } = req.query;
 
-      const query: any = {
-        category: category as never,
+      const query: LostReportSearchFilters = {
+        category: category ? (category as ItemCategory) : undefined,
         location: location as string,
         dateLostFrom: dateLostFrom ? new Date(dateLostFrom as string) : undefined,
         dateLostTo: dateLostTo ? new Date(dateLostTo as string) : undefined,
         keyword: keyword as string,
       };
+      
 
       if (req.user!.role === 'CLAIMANT') {
 
