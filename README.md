@@ -32,13 +32,9 @@ This repository contains the **Backend** API, built with Node.js, Express, and M
   - Prevents over-capacity additions
   - Automatically frees storage space when items are returned to claimants
   - Real-time occupancy tracking and visualization
-- **Pickup Scheduling**: Slot-based booking system for item retrieval.
-  - QR code generation for secure verification
-  - Reference code system for manual verification
-  - **New**: Fetch pickup by claim ID for better UX integration
-- **Disposition Workflows**: Automated handling for unclaimed items (Donate/Auction/Dispose).
-- **Advanced Analytics**: Metrics for recovery rates, category trends, and staff performance.
-- **Notification Service**: Asynchronous email notifications via BullMQ + Redis.
+- **Payment & Recovery Fees**: Integrated with **Stripe** for secure transactions.
+  - **Dynamic Storage Calculation**: ₹5 per day based on `dateFound` + ₹40 handling fee.
+  - **Pre-pickup Requirement**: Strictly enforces payment before allowing pickup scheduling.
 - **AI Assistant Chatbot**: Intelligent chatbot powered by Google Gemini/Groq for helping users find items and clarifying policies.
 - **Security**: RBAC (Role-Based Access Control), Rate Limiting, Input Sanitization.
 - **Public Access**: Unauthenticated users can browse found items.
@@ -51,6 +47,7 @@ This repository contains the **Backend** API, built with Node.js, Express, and M
 - **Caching/Queue**: Redis
 - **Authentication**: Passport.js (JWT, Google Strategy)
 - **Validation**: Joi / Zod
+- **Payments**: Stripe API
 - **Logging**: Winston
 
 ## 📁 Project Structure
@@ -191,8 +188,16 @@ src/
 | **GET** | `/api/pickups/claim/:claimId` | ✅ | Any | Get pickup by claim ID |
 | **POST** | `/api/pickups` | ✅ | Claimant | Book pickup slot for verified claim |
 | **GET** | `/api/pickups/slots/available` | ✅ | Claimant | Get available pickup time slots |
-| **POST** | `/api/pickups/:id/verify` | ✅ | Staff/Admin | Verify pickup via QR/reference code |
-| **POST** | `/api/pickups/:id/complete` | ✅  | Staff/Admin | Complete pickup (decrements storage) |
+| **POST** | `/api/pickups/:id/verify` | ✅ | Staff/Admin | Verify pickup (Validates Payment Status) |
+| **POST** | `/api/pickups/:id/complete` | ✅  | Staff/Admin | Complete pickup (Enforces Payment Status) |
+
+### Payments (`/api/payments`)
+
+| Method | Endpoint | Auth | Role | Description |
+| --- | --- | --- | --- | --- |
+| **GET** | `/api/payments/fee-breakdown/:claimId` | ✅ | Claimant | Calculate handling & storage fees |
+| **POST** | `/api/payments/create-intent` | ✅ | Claimant | Create Stripe Payment Intent |
+| **POST** | `/api/payments/verify` | ✅ | Claimant | Sync Stripe success with Claim status |
 
 ### Disposition Workflows (`/api/dispositions`)
 
@@ -280,7 +285,8 @@ graph TD
 7. **Rejection**: Claim rejected → Item becomes `AVAILABLE` again
 8. Verified claimant books pickup slot
 9. Claim status updates to `PICKUP_BOOKED`
-10. On pickup completion:
+11. On pickup completion:
+    - **Payment Verification**: Verified status required (`claim.paymentStatus === 'PAID'`)
     - Claim status → `RETURNED`
     - Item status → `RETURNED`
     - **Storage automatically decremented** via `removeItemFromStorage()`
@@ -387,6 +393,21 @@ await addToNewStorage(newStorageId);
 
 
 ## 🆕 Recent Updates (February 2026)
+
+### Today's Update (Thursday, February 19, 2026) 🛡️
+> **Featured**: Stripe Payment Integration & Secure Handovers
+
+#### 💳 Payment & Fee Engine
+- ✅ **Automated Storage Charges**: Logic to calculate fees based on item stay duration (₹5/day).
+- ✅ **Stripe API Integration**: Robust implementation of Stripe Payment Intents with server-side idempotency.
+- ✅ **Strict Payment Guards**: Middleware and service-level checks ensuring pickups are only scheduled and completed for `PAID` claims.
+
+#### 📊 Analytics & Reporting
+- ✅ **Revenue Tracking**: Added backend metrics to track revenue from handling and storage fees.
+- ✅ **Match Score Refinement**: Optimized the matching algorithm for better precision in 'High Value' item detection.
+
+#### 🛠️ Maintenance
+- ✅ **Clean Code Initiative**: Removed redundant comments and unified fee calculation logic in `PaymentService`.
 
 ### Wed Update (February 18, 2026) ✨ - `wed-branch`
 > **Featured**: Documentation & AI Integration.

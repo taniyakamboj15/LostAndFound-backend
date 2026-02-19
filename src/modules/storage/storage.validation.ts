@@ -58,3 +58,7 @@ export const getAllStorageValidation = [
     .optional()
     .isInt({ min: 1, max: 100 }),
 ];
+
+export const storageIdValidation = [
+  param('id').isMongoId().withMessage('Invalid storage ID'),
+];

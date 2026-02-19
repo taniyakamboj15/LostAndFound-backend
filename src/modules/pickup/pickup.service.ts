@@ -7,9 +7,9 @@ interface PickupFilters {
   isCompleted?: string;
   pickupDate?: string;
 }
-import Claim from '../claim/claim.model';
+import Claim, { IClaim } from '../claim/claim.model';
 import Item from '../item/item.model';
-import { ClaimStatus, ItemStatus, PickupSlot } from '../../common/types';
+import { ClaimStatus, ItemStatus, PickupSlot, PaymentStatus } from '../../common/types';
 import { NotFoundError, ValidationError } from '../../common/errors';
 import activityService from '../activity/activity.service';
 import { ActivityAction } from '../../common/types';
@@ -37,6 +37,10 @@ class PickupService {
 
     if (!claim) {
       throw new NotFoundError('Verified claim not found');
+    }
+
+    if (claim.paymentStatus !== PaymentStatus.PAID) {
+      throw new ValidationError('Recovery fee must be paid before booking pickup');
     }
 
     // Check if pickup already exists
@@ -203,22 +207,22 @@ class PickupService {
       throw new NotFoundError('Pickup not found');
     }
 
-    // If reference code is provided, verify it matches
     if (referenceCode && pickup.referenceCode !== referenceCode) {
       throw new ValidationError('Invalid reference code');
     }
 
-    // If no reference code, ensure it was already verified
+    // Ensure payment is completed
+    const associatedClaim = pickup.claimId as unknown as IClaim;
+    if (associatedClaim && associatedClaim.paymentStatus !== PaymentStatus.PAID) {
+      throw new ValidationError('Payment must be completed before pickup can be finalized.');
+    }
+
     if (!referenceCode && !pickup.isVerified) {
       throw new ValidationError('Pickup must be verified before completion');
     }
 
     if (!pickup.isVerified) {
-       // Double check verification even if code matched (though verifyReferenceCode should have set it)
-       // Or we can allow code match to auto-verify? 
-       // Current flow: Verify -> isVerified=true -> Complete (no code)
-       // OR Complete (with code) -> Verify & Complete
-       // Let's stick to strict: Must be verified. Code is just an extra check if provided.
+       
       throw new ValidationError('Pickup must be verified before completion');
     }
 
@@ -282,6 +286,12 @@ class PickupService {
 
     if (pickup.isCompleted) {
       throw new ValidationError('Pickup already completed');
+    }
+
+    // Verify payment status
+    const associatedClaim = pickup.claimId as unknown as IClaim;
+    if (associatedClaim && associatedClaim.paymentStatus !== PaymentStatus.PAID) {
+      throw new ValidationError('Claim payment is still pending. Cannot verify pickup.');
     }
 
     pickup.isVerified = true;

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import userController from './user.controller';
 import { validate } from '../../common/middlewares/validation.middleware';
-import { updateProfileValidation } from './user.validation';
+import { updateProfileValidation, createUserValidation, getUsersValidation } from './user.validation';
 import { authenticate, authorize } from '../../common/middlewares/auth.middleware';
 import { UserRole } from '../../common/types';
 import {
@@ -39,6 +39,7 @@ router.post(
   '/',
   authenticate,
   authorize(UserRole.ADMIN),
+  validate(createUserValidation),
   userController.createUser
 );
 
@@ -46,6 +47,7 @@ router.get(
   '/',
   authenticate,
   authorize(UserRole.ADMIN),
+  validate(getUsersValidation),
   userController.getUsers
 );
 

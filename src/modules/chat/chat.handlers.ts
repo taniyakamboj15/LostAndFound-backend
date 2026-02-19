@@ -12,7 +12,9 @@ import {
   IntentClassification,
 } from './chat.types';
 
-// ─── Search Found Items ────────────────────────────────────────────────────────
+
+
+
 
 export async function handleSearchItems(params: IntentClassification): Promise<ChatQueryResult> {
   const query: Record<string, unknown> = { status: 'AVAILABLE' };
@@ -49,7 +51,7 @@ export async function handleSearchItems(params: IntentClassification): Promise<C
     : { type: 'SEARCH_ITEMS', items, total: items.length, message: `Found ${items.length} item(s) matching "${label}":` };
 }
 
-// ─── My Lost Reports ───────────────────────────────────────────────────────────
+
 
 export async function handleMyReports(userId: string): Promise<ChatQueryResult> {
   const result = await lostReportService.getMyReports(

@@ -38,6 +38,19 @@ export enum ClaimStatus {
   REJECTED = 'REJECTED',
 }
 
+export enum PaymentStatus {
+  PENDING = 'PENDING',
+  PAID = 'PAID',
+  FAILED = 'FAILED',
+}
+
+export interface FeeBreakdown {
+  handlingFee: number;
+  storageFee: number;
+  daysStored: number;
+  totalAmount: number;
+}
+
 export enum DispositionType {
   DONATE = 'DONATE',
   AUCTION = 'AUCTION',
@@ -68,6 +81,8 @@ export enum NotificationEvent {
   EMAIL_VERIFICATION = 'EMAIL_VERIFICATION',
   PROOF_REQUESTED = 'PROOF_REQUESTED',
   PICKUP_BOOKED = 'PICKUP_BOOKED',
+  PAYMENT_REQUIRED = 'PAYMENT_REQUIRED',
+  PAYMENT_RECEIVED = 'PAYMENT_RECEIVED',
 }
 
 // --- Common Base Types ---
@@ -169,11 +184,12 @@ export interface AnalyticsMetrics {
   matchSuccessRate: number;
   averageRecoveryTime: number;
   pendingClaims: number;
+  pendingReviewClaims: number;
+  readyForHandoverClaims: number;
   expiringItems: number;
   categoryBreakdown: Record<ItemCategory, number>;
 }
 
-// --- Model Interfaces (Document-based) ---
 
 export interface IUserModel extends Document {
   email: string;
@@ -241,6 +257,15 @@ export interface IClaimModel extends Document {
   verifiedBy?: Types.ObjectId;
   verifiedAt?: Date;
   rejectionReason?: string;
+  paymentStatus: PaymentStatus;
+  feeDetails?: {
+    handlingFee: number;
+    storageFee: number;
+    daysStored: number;
+    totalAmount: number;
+    paidAt?: Date;
+    transactionId?: string;
+  };
   createdAt: Date;
   updatedAt: Date;
 }

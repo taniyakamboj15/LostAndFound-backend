@@ -1,4 +1,4 @@
-import { body } from 'express-validator';
+import { body, param } from 'express-validator';
 
 export const sendMessageValidation = [
   body('message')
@@ -10,6 +10,12 @@ export const sendMessageValidation = [
 
   body('sessionId')
     .optional()
+    .isUUID(4)
+    .withMessage('Invalid session ID format'),
+];
+
+export const sessionParamValidation = [
+  param('sessionId')
     .isUUID(4)
     .withMessage('Invalid session ID format'),
 ];

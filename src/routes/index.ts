@@ -11,6 +11,7 @@ import dispositionRoutes from '../modules/disposition/disposition.routes';
 import analyticsRoutes from '../modules/analytics/analytics.routes';
 import activityRoutes from '../modules/activity/activity.routes';
 import chatRoutes from '../modules/chat/chat.routes';
+import paymentRoutes from '../modules/payment/payment.routes';
 import { apiLimiter } from '../common/middlewares/rateLimit.middleware';
 import { sanitizeMiddleware } from '../common/middlewares/sanitize.middleware';
 const router = Router();
@@ -40,5 +41,6 @@ router.use('/dispositions', dispositionRoutes);
 router.use('/analytics', analyticsRoutes);
 router.use('/activities', activityRoutes);
 router.use('/chat', chatRoutes);
+router.use('/payments', paymentRoutes);
 
 export default router;

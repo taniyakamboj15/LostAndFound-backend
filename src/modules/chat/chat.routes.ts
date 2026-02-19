@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { authenticate, requireEmailVerification } from '../../common/middlewares/auth.middleware';
-import { sendMessageValidation } from './chat.validation';
+import { sendMessageValidation, sessionParamValidation } from './chat.validation';
 import * as chatController from './chat.controller';
+import { validate } from '../../common/middlewares/validation.middleware';
 
 const router = Router();
 
@@ -21,20 +22,28 @@ router.post('/start', chatController.startSession);
  * @desc    Send a message in a chat session
  * @access  Private
  */
-router.post('/message', sendMessageValidation, chatController.sendMessage);
+router.post('/message', validate(sendMessageValidation), chatController.sendMessage);
 
 /**
  * @route   GET /api/chat/session/:sessionId
  * @desc    Get session state
  * @access  Private
  */
-router.get('/session/:sessionId', chatController.getSession);
+router.get(
+  '/session/:sessionId',
+  validate(sessionParamValidation),
+  chatController.getSession
+);
 
 /**
  * @route   DELETE /api/chat/session/:sessionId
  * @desc    Cancel and delete a session
  * @access  Private
  */
-router.delete('/session/:sessionId', chatController.deleteSession);
+router.delete(
+  '/session/:sessionId',
+  validate(sessionParamValidation),
+  chatController.deleteSession
+);
 
 export default router;

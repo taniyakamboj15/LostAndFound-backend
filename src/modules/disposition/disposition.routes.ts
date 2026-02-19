@@ -7,6 +7,7 @@ import {
   createDispositionValidation,
   getAllDispositionsValidation,
   addAuditEntryValidation,
+  dispositionIdValidation,
 } from './disposition.validation';
 import { UserRole } from '../../common/types';
 
@@ -34,7 +35,11 @@ router.get(
 router.get('/expired-items', dispositionController.getExpiredItems);
 
 // Get disposition by ID
-router.get('/:id', dispositionController.getDispositionById);
+router.get(
+  '/:id',
+  validate(dispositionIdValidation),
+  dispositionController.getDispositionById
+);
 
 // Add audit entry
 router.post(

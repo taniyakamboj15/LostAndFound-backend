@@ -109,6 +109,24 @@ class AnalyticsController {
       });
     }
   );
+  /**
+   * @swagger
+   * /api/analytics/payments:
+   *   get:
+   *     summary: Get payment analytics
+   *     tags: [Analytics]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Payment analytics retrieved successfully
+   */
+  getPaymentAnalytics = asyncHandler(
+    async (_req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const data = await analyticsService.getPaymentAnalytics();
+      res.json({ success: true, data });
+    }
+  );
 }
 
 export default new AnalyticsController();

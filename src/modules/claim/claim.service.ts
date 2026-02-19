@@ -251,7 +251,7 @@ class ClaimService {
     verifierId: string,
     notes?: string
   ): Promise<IClaim> {
-    const claim = await Claim.findById(claimId);
+    const claim = await Claim.findById(claimId).populate('itemId');
 
     if (!claim) {
       throw new NotFoundError('Claim not found');
@@ -273,21 +273,43 @@ class ClaimService {
       userId: verifierId,
       entityType: 'Claim',
       entityId: claimId,
-      metadata: {
-        claimantId: claim.claimantId.toString(),
-      },
+      metadata: { claimantId: claim.claimantId.toString() },
     });
 
-    // Notify claimant
-    await notificationService.queueNotification({
-      event: NotificationEvent.CLAIM_STATUS_UPDATE,
-      userId: claim.claimantId.toString(),
-      data: {
-        claimId,
-        status: ClaimStatus.VERIFIED,
-        notes,
-      },
-    });
+    // Notify: generic status update + dedicated payment required email
+    const claimantId = claim.claimantId.toString();
+    const claimantUser = await User.findById(claimantId).select('name');
+    const item = claim.itemId as unknown as { dateFound: Date; description: string };
+
+    // Estimate fee for email
+    const HANDLING_FEE = 40;
+    const STORAGE_FEE_PER_DAY = 5;
+    const daysStored = item?.dateFound
+      ? Math.max(1, Math.ceil(Math.abs(Date.now() - new Date(item.dateFound).getTime()) / 86400000))
+      : 1;
+    const storageFee = daysStored * STORAGE_FEE_PER_DAY;
+    const totalAmount = HANDLING_FEE + storageFee;
+
+    await Promise.all([
+      notificationService.queueNotification({
+        event: NotificationEvent.CLAIM_STATUS_UPDATE,
+        userId: claimantId,
+        data: { claimId, status: ClaimStatus.VERIFIED, notes },
+      }),
+      notificationService.queueNotification({
+        event: NotificationEvent.PAYMENT_REQUIRED,
+        userId: claimantId,
+        data: {
+          claimId,
+          claimantName: claimantUser?.name ?? 'there',
+          itemDescription: item?.description ?? 'your item',
+          handlingFee: HANDLING_FEE,
+          storageFee,
+          daysStored,
+          totalAmount,
+        },
+      }),
+    ]);
 
     return claim;
   }

@@ -4,219 +4,209 @@ import { NotificationEvent } from '../../common/types';
 import User from '../user/user.model';
 import transporter from '../../config/email';
 import handlebars from 'handlebars';
+import logger from '../../common/utils/logger';
 import fs from 'fs';
 import path from 'path';
 
+// ─── Template file registry (event → .hbs filename) ───────────────────────
+const TEMPLATE_FILES: Record<NotificationEvent, string> = {
+  [NotificationEvent.MATCH_FOUND]:             'match-found.hbs',
+  [NotificationEvent.CLAIM_STATUS_UPDATE]:     'claim-status-update.hbs',
+  [NotificationEvent.RETENTION_EXPIRY_WARNING]:'retention-expiry-warning.hbs',
+  [NotificationEvent.PICKUP_REMINDER]:         'pickup-reminder.hbs',
+  [NotificationEvent.EMAIL_VERIFICATION]:      'email-verification.hbs',
+  [NotificationEvent.PROOF_REQUESTED]:         'proof-requested.hbs',
+  [NotificationEvent.PICKUP_BOOKED]:           'pickup-booked.hbs',
+  [NotificationEvent.PAYMENT_REQUIRED]:        'payment-required.hbs',
+  [NotificationEvent.PAYMENT_RECEIVED]:        'payment-received.hbs',
+};
+
+// ─── Email subjects ────────────────────────────────────────────────────────
+type SubjectResolver = string | ((d: Record<string, unknown>) => string);
+
+const EMAIL_SUBJECTS: Record<NotificationEvent, SubjectResolver> = {
+  [NotificationEvent.MATCH_FOUND]:             'Potential Match Found for Your Lost Item',
+  [NotificationEvent.CLAIM_STATUS_UPDATE]:     (d) => `Claim Status Update: ${d.status}`,
+  [NotificationEvent.RETENTION_EXPIRY_WARNING]:'Item Retention Expiring Soon',
+  [NotificationEvent.PICKUP_REMINDER]:         'Pickup Reminder — Tomorrow',
+  [NotificationEvent.EMAIL_VERIFICATION]:      'Verify Your Email Address',
+  [NotificationEvent.PROOF_REQUESTED]:         'Proof of Ownership Required',
+  [NotificationEvent.PICKUP_BOOKED]:           'Your Pickup Has Been Confirmed',
+  [NotificationEvent.PAYMENT_REQUIRED]:        (d) => `Action Required: Pay ₹${d.totalAmount} to Schedule Pickup`,
+  [NotificationEvent.PAYMENT_RECEIVED]:        (d) => `Payment Confirmed — ₹${d.totalAmount} Received`,
+};
+
+// ─── Plain-text fallback templates (used when .hbs file is missing) ────────
+const FALLBACK_TEMPLATES: Record<NotificationEvent, (d: Record<string, unknown>, clientUrl: string) => EmailTemplate> = {
+  [NotificationEvent.MATCH_FOUND]: (d, url) => ({
+    subject: 'Potential Match Found for Your Lost Item',
+    html: `<h2>Great News!</h2><p>We found a potential match (${((d.confidenceScore as number) * 100).toFixed(0)}% confidence).</p><p><a href="${url}/matches/${d.matchId}">View Match</a></p>`,
+  }),
+  [NotificationEvent.CLAIM_STATUS_UPDATE]: (d, url) => ({
+    subject: `Claim Status Update: ${d.status}`,
+    html: `<h2>Status Updated</h2><p>Your claim is now: <strong>${d.status}</strong></p>${d.notes ? `<p>${d.notes}</p>` : ''}<p><a href="${url}/claims/${d.claimId}">View Claim</a></p>`,
+  }),
+  [NotificationEvent.RETENTION_EXPIRY_WARNING]: (d) => ({
+    subject: 'Item Retention Expiring Soon',
+    html: `<h2>Retention Expiry Warning</h2><p>Your item will be disposed in <strong>${d.daysRemaining} days</strong>. Please take action.</p>`,
+  }),
+  [NotificationEvent.PICKUP_REMINDER]: (d) => ({
+    subject: 'Pickup Reminder — Tomorrow',
+    html: `<h2>Pickup Reminder</h2><p><strong>${d.pickupDate}</strong>, ${d.startTime}–${d.endTime}</p><p>Reference: <code>${d.referenceCode}</code></p>`,
+  }),
+  [NotificationEvent.EMAIL_VERIFICATION]: (d, url) => ({
+    subject: 'Verify Your Email Address',
+    html: `<h2>Verify Your Email</h2><p><a href="${url}/verify-email?token=${d.token}">Click here to verify your email</a>. This link expires in 24 hours.</p>`,
+  }),
+  [NotificationEvent.PROOF_REQUESTED]: (d, url) => ({
+    subject: 'Proof of Ownership Required',
+    html: `<h2>Proof Required</h2><p>Please upload proof of ownership for your claim.</p><p><a href="${url}/claims/${d.claimId}/upload-proof">Upload Proof</a></p>`,
+  }),
+  [NotificationEvent.PICKUP_BOOKED]: (d) => ({
+    subject: 'Your Pickup Has Been Confirmed',
+    html: `<h2>Pickup Confirmed</h2><p>${new Date(d.pickupDate as string).toLocaleDateString('en-IN')}, ${d.startTime}–${d.endTime}</p><p>Reference: <code>${d.referenceCode}</code></p>`,
+  }),
+  [NotificationEvent.PAYMENT_REQUIRED]: (d, url) => ({
+    subject: `Action Required: Pay ₹${d.totalAmount} to Schedule Pickup`,
+    html: `<h2>Payment Required</h2><p>Hi ${d.claimantName},</p><p>Your claim is verified. Please pay <strong>₹${d.totalAmount}</strong> to schedule pickup.</p><p><a href="${url}/claims/${d.claimId}">Pay Now</a></p>`,
+  }),
+  [NotificationEvent.PAYMENT_RECEIVED]: (d, url) => ({
+    subject: `Payment Confirmed — ₹${d.totalAmount} Received`,
+    html: `<h2>Payment Received</h2><p>Hi ${d.claimantName},</p><p>₹<strong>${d.totalAmount}</strong> received on ${d.paidAt}.</p><p>You can now schedule your pickup.</p><p><a href="${url}/claims/${d.claimId}">Schedule Pickup</a></p>`,
+  }),
+};
+
+// ─── Service ───────────────────────────────────────────────────────────────
+
 class NotificationService {
-  private templates: Map<NotificationEvent, HandlebarsTemplateDelegate> = new Map();
+  private readonly templates = new Map<NotificationEvent, HandlebarsTemplateDelegate>();
+  private readonly templateDir = path.join(__dirname, '../../templates/emails');
+  private readonly clientUrl = process.env.CLIENT_URL ?? 'http://localhost:3000';
 
   constructor() {
-    this.loadTemplates();
     this.registerHelpers();
+    this.loadTemplates();
   }
 
-  private loadTemplates(): void {
-    const templateDir = path.join(__dirname, '../../templates/emails');
-    const partialsDir = path.join(templateDir, 'partials');
+  // ── BullMQ ────────────────────────────────────────────────────────────────
 
-    // Load partials
-    if (fs.existsSync(partialsDir)) {
-      const partialFiles = fs.readdirSync(partialsDir);
-      partialFiles.forEach((file) => {
-        if (file.endsWith('.hbs')) {
-          const partialName = path.basename(file, '.hbs');
-          const partialSource = fs.readFileSync(
-            path.join(partialsDir, file),
-            'utf-8'
-          );
-          handlebars.registerPartial(partialName, partialSource);
-        }
-      });
-    }
-
-    const templateFiles: Record<NotificationEvent, string> = {
-      [NotificationEvent.MATCH_FOUND]: 'match-found.hbs',
-      [NotificationEvent.CLAIM_STATUS_UPDATE]: 'claim-status-update.hbs',
-      [NotificationEvent.RETENTION_EXPIRY_WARNING]: 'retention-expiry-warning.hbs',
-      [NotificationEvent.PICKUP_REMINDER]: 'pickup-reminder.hbs',
-      [NotificationEvent.EMAIL_VERIFICATION]: 'email-verification.hbs',
-      [NotificationEvent.PROOF_REQUESTED]: 'proof-requested.hbs',
-      [NotificationEvent.PICKUP_BOOKED]: 'pickup-booked.hbs',
-    };
-
-    Object.entries(templateFiles).forEach(([event, filename]) => {
-      const templatePath = path.join(templateDir, filename);
-      if (fs.existsSync(templatePath)) {
-        const templateSource = fs.readFileSync(templatePath, 'utf-8');
-        this.templates.set(
-          event as NotificationEvent,
-          handlebars.compile(templateSource)
-        );
-      }
+  /**
+   * Queue a notification job. Uses a 30-second deduplication window via jobId
+   * so that rapid retries or duplicate triggers don't send multiple emails.
+   */
+  async queueNotification(payload: NotificationPayload): Promise<void> {
+    const windowId = Math.floor(Date.now() / 30_000);
+    await notificationQueue.add('send-notification', payload, {
+      jobId: `${payload.event}-${payload.userId}-${windowId}`,
     });
   }
 
-  private registerHelpers(): void {
-    // Register Handlebars helper for equality check
-    handlebars.registerHelper('eq', (a, b) => a === b);
+  // ── Worker entry point ────────────────────────────────────────────────────
+
+  /**
+   * Called by the BullMQ worker for each job. Resolves the recipient user,
+   * injects their name into the template context, and sends the email.
+   */
+  async processNotification(payload: NotificationPayload): Promise<void> {
+    const user = await User.findById(payload.userId).select('name email').lean();
+    if (!user) throw new Error(`User not found: ${payload.userId}`);
+
+    // Inject the resolved user name so templates can use {{claimantName}} / {{userName}}
+    const enrichedData: Record<string, unknown> = {
+      ...payload.data,
+      claimantName: user.name,
+      userName: user.name,
+    };
+
+    const template = this.buildTemplate(payload.event, enrichedData);
+    await this.sendEmail(user.email, template);
   }
 
-  async queueNotification(payload: NotificationPayload): Promise<void> {
-    await notificationQueue.add('send-notification', payload);
-  }
+  // ── Email sender ──────────────────────────────────────────────────────────
 
   async sendEmail(to: string, template: EmailTemplate): Promise<void> {
     await transporter.sendMail({
-      from: process.env.EMAIL_FROM,
+      from: `"Lost & Found" <${process.env.EMAIL_FROM}>`,
       to,
       subject: template.subject,
       html: template.html,
     });
   }
 
-  async processNotification(payload: NotificationPayload): Promise<void> {
-    const user = await User.findById(payload.userId);
+  // ── Template rendering ────────────────────────────────────────────────────
 
-    if (!user) {
-      throw new Error('User not found');
-    }
+  private buildTemplate(event: NotificationEvent, data: Record<string, unknown>): EmailTemplate {
+    const subject = this.resolveSubject(event, data);
+    const compiledTemplate = this.templates.get(event);
 
-    const template = this.getEmailTemplate(payload.event, payload.data);
-
-    await this.sendEmail(user.email, template);
-  }
-
-  private getEmailTemplate(
-    event: NotificationEvent,
-    data: Record<string, unknown>
-  ): EmailTemplate {
-    const templateFunc = this.templates.get(event);
-
-    if (!templateFunc) {
-      // Fallback to simple HTML if template not found
-      return this.getFallbackTemplate(event, data);
+    if (!compiledTemplate) {
+      // .hbs file wasn't found at startup — use fallback plain-HTML template
+      logger.warn(`No Handlebars template registered for event "${event}", using fallback`);
+      return FALLBACK_TEMPLATES[event](data, this.clientUrl);
     }
 
     const context: Record<string, unknown> = {
       ...data,
-      clientUrl: process.env.CLIENT_URL || 'http://localhost:3000',
+      clientUrl: this.clientUrl,
       year: new Date().getFullYear(),
     };
 
-    // Format specific data based on event
-    if (
-      event === NotificationEvent.MATCH_FOUND &&
-      typeof data.confidenceScore === 'number'
-    ) {
+    // Normalise specific fields for consistent template rendering
+    if (event === NotificationEvent.MATCH_FOUND && typeof data.confidenceScore === 'number') {
       context.confidenceScore = Math.round(data.confidenceScore * 100);
     }
 
-    const html = templateFunc(context);
-    const subject = this.getSubject(event, data);
+    if (event === NotificationEvent.PAYMENT_RECEIVED) {
+      const raw = data.paidAt;
+      const date = raw instanceof Date ? raw : raw ? new Date(raw as string) : null;
+      context.paidAt = date
+        ? date.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
+        : '';
+    }
 
-    return { subject, html };
+    return { subject, html: compiledTemplate(context) };
   }
 
-  private getSubject(event: NotificationEvent, data: Record<string, unknown>): string {
-    const subjects: Record<NotificationEvent, string | ((d: Record<string, unknown>) => string)> = {
-      [NotificationEvent.MATCH_FOUND]: 'Potential Match Found for Your Lost Item',
-      [NotificationEvent.CLAIM_STATUS_UPDATE]: (d) => `Claim Status Update: ${d.status}`,
-      [NotificationEvent.RETENTION_EXPIRY_WARNING]: 'Item Retention Expiring Soon',
-      [NotificationEvent.PICKUP_REMINDER]: 'Pickup Reminder - Tomorrow',
-      [NotificationEvent.EMAIL_VERIFICATION]: 'Verify Your Email',
-      [NotificationEvent.PROOF_REQUESTED]: 'Proof of Ownership Required',
-      [NotificationEvent.PICKUP_BOOKED]: 'Pickup Confirmed',
-    };
-
-    const subject = subjects[event];
-    return typeof subject === 'function' ? subject(data) : subject;
+  private resolveSubject(event: NotificationEvent, data: Record<string, unknown>): string {
+    const resolver = EMAIL_SUBJECTS[event];
+    return typeof resolver === 'function' ? resolver(data) : resolver;
   }
 
-  private getFallbackTemplate(
-    event: NotificationEvent,
-    data: Record<string, unknown>
-  ): EmailTemplate {
-    // Simple fallback templates
-    const templates: Record<NotificationEvent, (data: Record<string, unknown>) => EmailTemplate> = {
-      [NotificationEvent.MATCH_FOUND]: (d) => ({
-        subject: 'Potential Match Found for Your Lost Item',
-        html: `
-          <h1>Great News!</h1>
-          <p>We found a potential match for your lost item report.</p>
-          <p><strong>Confidence Score:</strong> ${((d.confidenceScore as number) * 100).toFixed(0)}%</p>
-          <p>Please visit your dashboard to review the match and file a claim if this is your item.</p>
-          <a href="${process.env.CLIENT_URL}/matches/${d.matchId}">View Match</a>
-        `,
-      }),
-      [NotificationEvent.CLAIM_STATUS_UPDATE]: (d) => ({
-        subject: `Claim Status Update: ${d.status}`,
-        html: `
-          <h1>Claim Status Updated</h1>
-          <p>Your claim status has been updated to: <strong>${d.status}</strong></p>
-          ${d.notes ? `<p>Notes: ${d.notes}</p>` : ''}
-          <a href="${process.env.CLIENT_URL}/claims/${d.claimId}">View Claim</a>
-        `,
-      }),
-      [NotificationEvent.RETENTION_EXPIRY_WARNING]: (d) => ({
-        subject: 'Item Retention Expiring Soon',
-        html: `
-          <h1>Retention Expiry Warning</h1>
-          <p>The following item will be disposed of in ${d.daysRemaining} days:</p>
-          <p><strong>Category:</strong> ${d.category}</p>
-          <p><strong>Location Found:</strong> ${d.locationFound}</p>
-          <p>Please take appropriate action before the expiry date.</p>
-        `,
-      }),
-      [NotificationEvent.PICKUP_REMINDER]: (d) => ({
-        subject: 'Pickup Reminder - Tomorrow',
-        html: `
-          <h1>Pickup Reminder</h1>
-          <p>Your pickup is scheduled for tomorrow:</p>
-          <p><strong>Date:</strong> ${d.pickupDate}</p>
-          <p><strong>Time:</strong> ${d.startTime} - ${d.endTime}</p>
-          <p><strong>Reference Code:</strong> ${d.referenceCode}</p>
-          <p>Please bring a valid ID and your reference code.</p>
-        `,
-      }),
-      [NotificationEvent.EMAIL_VERIFICATION]: (d) => ({
-        subject: 'Verify Your Email',
-        html: `
-          <h1>Email Verification</h1>
-          <p>Please verify your email address:</p>
-          <a href="${process.env.CLIENT_URL}/verify-email?token=${d.token}">Verify Email</a>
-          <p>This link expires in 24 hours.</p>
-        `,
-      }),
-      [NotificationEvent.PROOF_REQUESTED]: (d) => ({
-        subject: 'Proof of Ownership Required',
-        html: `
-          <h1>Proof Required</h1>
-          <p>Please upload proof of ownership for your claim:</p>
-          <ul>
-            <li>Government-issued ID</li>
-            <li>Purchase receipt or invoice</li>
-            <li>Photos showing identifying features</li>
-          </ul>
-          <a href="${process.env.CLIENT_URL}/claims/${d.claimId}/upload-proof">Upload Proof</a>
-        `,
-      }),
-      [NotificationEvent.PICKUP_BOOKED]: (d) => ({
-        subject: 'Pickup Confirmed',
-        html: `
-          <h1>Pickup Confirmed</h1>
-          <p>Your pickup has been successfully scheduled:</p>
-          <p><strong>Date:</strong> ${new Date(d.pickupDate as string).toLocaleDateString()}</p>
-          <p><strong>Time:</strong> ${d.startTime} - ${d.endTime}</p>
-          <p><strong>Reference Code:</strong> ${d.referenceCode}</p>
-          <div style="text-align: center; margin: 20px 0;">
-            <img src="${d.qrCode}" alt="Pickup QR Code" style="width: 200px; height: 200px;" />
-          </div>
-          <p>Please bring a valid ID and this reference code to the storage location.</p>
-        `,
-      }),
-    };
+  // ── Startup: register Handlebars helpers and load .hbs template files ─────
 
-    return templates[event](data);
+  private registerHelpers(): void {
+    handlebars.registerHelper('eq', (a: unknown, b: unknown) => a === b);
+    handlebars.registerHelper('formatCurrency', (amount: number) =>
+      `₹${Number(amount).toFixed(2)}`
+    );
+  }
+
+  private loadTemplates(): void {
+    const partialsDir = path.join(this.templateDir, 'partials');
+
+    if (fs.existsSync(partialsDir)) {
+      fs.readdirSync(partialsDir)
+        .filter((f) => f.endsWith('.hbs'))
+        .forEach((f) => {
+          const name = path.basename(f, '.hbs');
+          const source = fs.readFileSync(path.join(partialsDir, f), 'utf-8');
+          handlebars.registerPartial(name, source);
+        });
+    }
+
+    let loaded = 0;
+    for (const [event, filename] of Object.entries(TEMPLATE_FILES)) {
+      const filePath = path.join(this.templateDir, filename);
+      if (fs.existsSync(filePath)) {
+        const source = fs.readFileSync(filePath, 'utf-8');
+        this.templates.set(event as NotificationEvent, handlebars.compile(source));
+        loaded++;
+      } else {
+        logger.warn(`Email template not found: ${filename} (fallback will be used for "${event}")`);
+      }
+    }
+
+    logger.info(`Notification service: ${loaded}/${Object.keys(TEMPLATE_FILES).length} email templates loaded`);
   }
 }
 

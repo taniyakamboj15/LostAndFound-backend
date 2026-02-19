@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Payment Confirmed</title>
+  <style>
+    body { margin: 0; padding: 0; background: #f4f6f8; font-family: 'Segoe UI', Arial, sans-serif; }
+    .wrapper { max-width: 580px; margin: 32px auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.10); }
+    .header { background: linear-gradient(135deg, #059669 0%, #0d9488 100%); padding: 40px 40px 32px; text-align: center; }
+    .header h1 { color: #ffffff; font-size: 26px; font-weight: 700; margin: 0; }
+    .header p { color: rgba(255,255,255,0.85); margin: 8px 0 0; font-size: 15px; }
+    .body { padding: 36px 40px; }
+    .greeting { font-size: 17px; color: #1f2937; margin-bottom: 16px; }
+    .receipt-box { border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; margin-bottom: 28px; }
+    .receipt-header { background: #f0fdf4; padding: 14px 20px; border-bottom: 1px solid #e5e7eb; }
+    .receipt-header span { font-weight: 700; color: #15803d; font-size: 14px; letter-spacing: 0.5px; text-transform: uppercase; }
+    .receipt-row { display: flex; justify-content: space-between; padding: 11px 20px; border-bottom: 1px solid #f3f4f6; font-size: 14px; }
+    .receipt-row:last-child { border-bottom: none; }
+    .receipt-row .label { color: #6b7280; }
+    .receipt-row .value { color: #111827; font-weight: 600; }
+    .receipt-total { background: #f9fafb; display: flex; justify-content: space-between; padding: 14px 20px; border-top: 2px solid #e5e7eb; }
+    .receipt-total .label { font-weight: 700; color: #374151; font-size: 15px; }
+    .receipt-total .value { font-weight: 800; color: #059669; font-size: 18px; }
+    .next-step { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 18px 20px; margin-bottom: 28px; }
+    .next-step h3 { color: #1e40af; font-size: 15px; margin: 0 0 8px; }
+    .next-step p { color: #374151; font-size: 14px; margin: 0; line-height: 1.6; }
+    .cta-btn { display: block; width: fit-content; margin: 0 auto 28px; background: #059669; color: #ffffff; text-decoration: none; padding: 14px 36px; border-radius: 8px; font-size: 16px; font-weight: 600; }
+    .footer { background: #f9fafb; padding: 20px 40px; text-align: center; font-size: 12px; color: #9ca3af; border-top: 1px solid #e5e7eb; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="header">
+      <h1>✅ Payment Confirmed!</h1>
+      <p>Your recovery fee has been received</p>
+    </div>
+    <div class="body">
+      <p class="greeting">Hi {{claimantName}},</p>
+      <p style="color:#374151;font-size:15px;line-height:1.6;">
+        We've received your payment for the item <strong>{{itemDescription}}</strong>.
+        You can now schedule your pickup!
+      </p>
+
+      <div class="receipt-box">
+        <div class="receipt-header">
+          <span>Payment Receipt</span>
+        </div>
+        <div class="receipt-row">
+          <span class="label">Transaction ID</span>
+          <span class="value" style="font-family:monospace;">{{transactionId}}</span>
+        </div>
+        <div class="receipt-row">
+          <span class="label">Date Paid</span>
+          <span class="value">{{paidAt}}</span>
+        </div>
+        <div class="receipt-row">
+          <span class="label">Handling Fee</span>
+          <span class="value">₹{{handlingFee}}</span>
+        </div>
+        <div class="receipt-row">
+          <span class="label">Storage Fee ({{daysStored}} days)</span>
+          <span class="value">₹{{storageFee}}</span>
+        </div>
+        <div class="receipt-total">
+          <span class="label">Total Paid</span>
+          <span class="value">₹{{totalAmount}}</span>
+        </div>
+      </div>
+
+      <div class="next-step">
+        <h3>📅 Next Step: Schedule Your Pickup</h3>
+        <p>
+          Your payment is confirmed. Visit your claim page to choose a convenient
+          date and time for pickup. Please bring a valid photo ID and your
+          reference code on the day.
+        </p>
+      </div>
+
+      <a class="cta-btn" href="{{clientUrl}}/claims/{{claimId}}">Schedule Pickup Now</a>
+    </div>
+    <div class="footer">
+      © {{year}} Lost & Found System &nbsp;·&nbsp; Keep this email as your payment receipt.
+    </div>
+  </div>
+</body>
+</html>

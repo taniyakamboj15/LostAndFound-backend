@@ -51,3 +51,7 @@ export const addAuditEntryValidation = [
     .isLength({ min: 5, max: 500 })
     .withMessage('Details are required'),
 ];
+
+export const dispositionIdValidation = [
+  param('id').isMongoId().withMessage('Invalid disposition ID'),
+];

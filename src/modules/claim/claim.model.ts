@@ -1,5 +1,5 @@
 import mongoose, { Schema } from 'mongoose';
-import { ClaimStatus, IClaimModel } from '../../common/types';
+import { ClaimStatus, IClaimModel, PaymentStatus } from '../../common/types';
 
 export interface IClaim extends IClaimModel {}
 
@@ -50,6 +50,20 @@ const claimSchema = new Schema<IClaim>(
     },
     verifiedAt: Date,
     rejectionReason: String,
+    paymentStatus: {
+      type: String,
+      enum: Object.values(PaymentStatus),
+      default: PaymentStatus.PENDING,
+      index: true,
+    },
+    feeDetails: {
+      handlingFee: { type: Number },
+      storageFee: { type: Number },
+      daysStored: { type: Number },
+      totalAmount: { type: Number },
+      paidAt: { type: Date },
+      transactionId: { type: String },
+    },
   },
   {
     timestamps: true,

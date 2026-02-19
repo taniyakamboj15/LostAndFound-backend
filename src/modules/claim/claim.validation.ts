@@ -38,8 +38,8 @@ export const rejectClaimValidation = [
   body('reason')
     .isString()
     .trim()
-    .isLength({ min: 10, max: 500 })
-    .withMessage('Rejection reason is required (10-500 characters)'),
+    .isLength({ min: 2, max: 500 })
+    .withMessage('Rejection reason is required (5-500 characters)'),
 ];
 
 export const getAllClaimsValidation = [

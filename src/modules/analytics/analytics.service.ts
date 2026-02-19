@@ -5,13 +5,12 @@ import Disposition from '../disposition/disposition.model';
 import { ItemStatus, ClaimStatus, ItemCategory, AnalyticsMetrics } from '../../common/types';
 
 class AnalyticsService {
-  async getDashboardMetrics(user: { id: string; role: string }): Promise<AnalyticsMetrics> {
+  async getDashboardMetrics(user: { id: string; role: string }): Promise<AnalyticsMetrics | any> {
     if (user.role === 'CLAIMANT') {
       const [pendingClaims] = await Promise.all([
         Claim.countDocuments({ claimantId: user.id, status: { $ne: ClaimStatus.RETURNED } }),
       ]);
 
-      // Initialize category breakdown with zero for all categories
       const categoryBreakdown: Record<string, number> = {};
       Object.values(ItemCategory).forEach((cat) => {
         categoryBreakdown[cat] = 0;
@@ -25,6 +24,8 @@ class AnalyticsService {
         matchSuccessRate: 0,
         averageRecoveryTime: 0,
         pendingClaims,
+        pendingReviewClaims: 0,
+        readyForHandoverClaims: 0,
         expiringItems: 0,
         categoryBreakdown: categoryBreakdown as Record<ItemCategory, number>,
       };
@@ -41,6 +42,8 @@ class AnalyticsService {
       expiringItems,
       categoryBreakdown,
       avgRecoveryTime,
+      pendingReviewClaims,
+      readyForHandoverClaims,
     ] = await Promise.all([
       Item.countDocuments(),
       Item.countDocuments({ status: ItemStatus.CLAIMED }),
@@ -58,6 +61,14 @@ class AnalyticsService {
       }),
       this.getCategoryBreakdown(),
       this.getAverageRecoveryTime(),
+      // New granular metrics
+      Claim.countDocuments({ 
+        status: { $in: [ClaimStatus.FILED, ClaimStatus.IDENTITY_PROOF_REQUESTED] } 
+      }),
+      Claim.countDocuments({ 
+        status: { $in: [ClaimStatus.VERIFIED, ClaimStatus.PICKUP_BOOKED] },
+        paymentStatus: 'PAID'
+      }),
     ]);
 
     const matchSuccessRate = totalMatches > 0 ? successfulMatches / totalMatches : 0;
@@ -70,6 +81,8 @@ class AnalyticsService {
       matchSuccessRate,
       averageRecoveryTime: avgRecoveryTime,
       pendingClaims,
+      pendingReviewClaims,
+      readyForHandoverClaims,
       expiringItems,
       categoryBreakdown,
     };
@@ -235,6 +248,93 @@ class AnalyticsService {
     });
 
     return { total, byType };
+  }
+
+  async getPaymentAnalytics(): Promise<{
+    totalRevenue: number;
+    totalPaidClaims: number;
+    totalPendingPaymentClaims: number;
+    averageFee: number;
+    revenueByMonth: { month: string; revenue: number; count: number }[];
+    topPayingUsers: { userId: string; name: string; email: string; totalPaid: number; claimCount: number }[];
+    recentPayments: { claimId: string; claimantName: string; claimantEmail: string; amount: number; paidAt: Date; itemDescription: string }[];
+  }> {
+    const [
+      revenueAgg,
+      totalPaidClaims,
+      totalPendingPaymentClaims,
+      revenueByMonthAgg,
+      topPayingUsersAgg,
+      recentPaymentsAgg,
+    ] = await Promise.all([
+      // Total revenue
+      Claim.aggregate([
+        { $match: { paymentStatus: 'PAID', 'feeDetails.totalAmount': { $exists: true } } },
+        { $group: { _id: null, total: { $sum: '$feeDetails.totalAmount' }, count: { $sum: 1 }, avg: { $avg: '$feeDetails.totalAmount' } } },
+      ]),
+      Claim.countDocuments({ paymentStatus: 'PAID' }),
+      // Verified claims awaiting payment
+      Claim.countDocuments({ status: 'VERIFIED', paymentStatus: { $ne: 'PAID' } }),
+      // Revenue by month (last 12 months)
+      Claim.aggregate([
+        { $match: { paymentStatus: 'PAID', 'feeDetails.paidAt': { $exists: true } } },
+        {
+          $group: {
+            _id: { $dateToString: { format: '%Y-%m-%d', date: '$feeDetails.paidAt' } },
+            revenue: { $sum: '$feeDetails.totalAmount' },
+            count: { $sum: 1 },
+          },
+        },
+        { $sort: { _id: 1 } },
+        { $limit: 12 },
+      ]),
+      // Top paying users
+      Claim.aggregate([
+        { $match: { paymentStatus: 'PAID' } },
+        { $group: { _id: '$claimantId', totalPaid: { $sum: '$feeDetails.totalAmount' }, claimCount: { $sum: 1 } } },
+        { $sort: { totalPaid: -1 } },
+        { $limit: 10 },
+        { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'user' } },
+        { $unwind: '$user' },
+        { $project: { userId: '$_id', name: '$user.name', email: '$user.email', totalPaid: 1, claimCount: 1 } },
+      ]),
+      // Recent payments
+      Claim.find({ paymentStatus: 'PAID' })
+        .sort({ 'feeDetails.paidAt': -1 })
+        .limit(10)
+        .populate<{ claimantId: { name: string; email: string } }>('claimantId', 'name email')
+        .populate<{ itemId: { description: string } }>('itemId', 'description'),
+    ]);
+
+    const totalRevenue = revenueAgg[0]?.total ?? 0;
+    const averageFee = revenueAgg[0]?.avg ?? 0;
+
+    return {
+      totalRevenue,
+      totalPaidClaims,
+      totalPendingPaymentClaims,
+      averageFee: Math.round(averageFee * 100) / 100,
+      revenueByMonth: revenueByMonthAgg.map((r: { _id: string; revenue: number; count: number }) => ({
+        month: r._id,
+        revenue: r.revenue,
+        count: r.count,
+      })),
+      topPayingUsers: topPayingUsersAgg.map((u: { userId: string; name: string; email: string; totalPaid: number; claimCount: number }) => ({
+        userId: u.userId?.toString(),
+        name: u.name,
+        email: u.email,
+        totalPaid: u.totalPaid,
+        claimCount: u.claimCount,
+      })),
+      recentPayments: recentPaymentsAgg.map((claim) => ({
+        claimId: claim._id.toString(),
+        claimantName: (claim.claimantId as unknown as { name: string })?.name ?? 'Unknown',
+        claimantEmail: (claim.claimantId as unknown as { email: string })?.email ?? '',
+        amount: claim.feeDetails?.totalAmount ?? 0,
+        paidAt: claim.feeDetails?.paidAt ?? new Date(),
+        itemDescription: (claim.itemId as unknown as { description: string })?.description ?? 'Unknown Item',
+      })),
+    };
   }
 }
 
