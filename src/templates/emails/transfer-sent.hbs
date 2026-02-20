@@ -1,0 +1,21 @@
+{{> header title="Item In Transit"}}
+
+<p>Hello,</p>
+
+<p>Your item <strong>{{itemDescription}}</strong> is now in transit to your preferred pickup location.</p>
+
+<div class="info-card">
+  <p><strong>Tracking Status:</strong> <span class="badge">In Transit</span></p>
+  {{#if carrierInfo}}
+    <p style="margin-top: 12px;"><strong>Carrier Details:</strong></p>
+    <p style="color: #4b5563;">{{carrierInfo}}</p>
+  {{/if}}
+</div>
+
+<p>We will notify you once your item arrives at the destination and is ready for pickup.</p>
+
+<div style="text-align: center;">
+  <a href="{{clientUrl}}/claims/{{claimId}}" class="button">Track Claim Status</a>
+</div>
+
+{{> footer}}

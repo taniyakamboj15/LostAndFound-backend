@@ -75,7 +75,6 @@ async function startServer(): Promise<void> {
     await connectDB();
     await connectRedis();
 
-    // Initialize repeatable job schedules (does NOT start worker consumers)
     await jobService.initializeRepeatableJobs();
 
     server = app.listen(PORT, () => {

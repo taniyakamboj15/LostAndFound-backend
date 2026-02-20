@@ -11,7 +11,9 @@ import { NotFoundError, ValidationError } from '../../common/errors';
 import activityService from '../activity/activity.service';
 import { ActivityAction } from '../../common/types';
 import { CreateItemData } from '../../common/types';
+import { RETENTION_PERIODS } from '../../common/constants';
 import storageService from '../storage/storage.service';
+import analyticsService from '../analytics/analytics.service';
 import * as matchQueue from '../match/match.queue';
 
 
@@ -40,10 +42,14 @@ class ItemService {
             throw new ValidationError('Selected storage location is inactive');
         }
         
-        if (storage.currentCount >= storage.capacity) {
-            throw new ValidationError(`Storage location "${storage.name}" is full (${storage.currentCount}/${storage.capacity})`);
+        const size = (data.itemSize?.toLowerCase() || 'medium') as 'small' | 'medium' | 'large';
+        
+        if (storage.currentCount[size] >= storage.capacity[size]) {
+            throw new ValidationError(`Storage location "${storage.name}" is full for ${size} items (${storage.currentCount[size]}/${storage.capacity[size]})`);
         }
     }
+
+    const predictionData = await analyticsService.predictTimeToClaim(data.category, data.locationFound);
 
     const item = await Item.create({
       ...data,
@@ -51,6 +57,12 @@ class ItemService {
       retentionPeriodDays,
       retentionExpiryDate,
       finderContact: data.finderContact,
+      prediction: {
+        likelihood: predictionData.likelihood,
+        estimatedDaysToClaim: predictionData.maxDays, // using maxDays as the safe estimate
+        confidence: predictionData.confidence,
+        isAccuracyTracked: false
+      }
     });
 
     // Log activity
@@ -135,7 +147,7 @@ class ItemService {
       .skip((pagination.page - 1) * pagination.limit)
       .limit(pagination.limit)
       .populate('registeredBy', 'name')
-      .populate('storageLocation', 'name location');
+      .populate('storageLocation', 'name location city');
 
     return {
       data: items,
@@ -192,7 +204,8 @@ class ItemService {
     // If item is being returned or disposed, remove from storage
     if ((status === ItemStatus.RETURNED || status === ItemStatus.DISPOSED) && item.storageLocation) {
       try {
-        await storageService.removeItemFromStorage(item.storageLocation.toString());
+        const size = (item.itemSize?.toLowerCase() || 'medium') as 'small' | 'medium' | 'large';
+        await storageService.removeItemFromStorage(item.storageLocation.toString(), size);
         item.storageLocation = undefined;
       } catch (error) {
         console.error('Error removing from storage during status update:', error);
@@ -238,19 +251,35 @@ class ItemService {
     }).populate('registeredBy', 'name email');
   }
 
+  /**
+   * Calculate retention period (days) using tiered schedule by category.
+   * High-value items (isHighValue=true OR estimatedValue>100) get extended retention.
+   * All defaults are configurable via environment variables.
+   */
   private calculateRetentionPeriod(
     category: ItemCategory,
-    isHighValue?: boolean
+    isHighValue?: boolean,
+    estimatedValue?: number
   ): number {
-    if (isHighValue) {
-      return parseInt(process.env.RETENTION_PERIOD_HIGH_VALUE || '60');
+    if (isHighValue || (estimatedValue && estimatedValue > 100)) {
+      return RETENTION_PERIODS.VALUABLES;
     }
 
-    if (category === ItemCategory.DOCUMENTS) {
-      return parseInt(process.env.RETENTION_PERIOD_DOCUMENTS || '90');
-    }
+    const retentionMap: Partial<Record<ItemCategory, number>> = {
+      [ItemCategory.ELECTRONICS]:      RETENTION_PERIODS.ELECTRONICS,
+      [ItemCategory.DOCUMENTS]:        RETENTION_PERIODS.DOCUMENTS,
+      [ItemCategory.PERISHABLES]:      RETENTION_PERIODS.PERISHABLES,
+      [ItemCategory.KEYS]:             RETENTION_PERIODS.KEYS,
+      [ItemCategory.JEWELRY]:          RETENTION_PERIODS.JEWELRY,
+      [ItemCategory.BAGS]:             RETENTION_PERIODS.BAGS,
+      [ItemCategory.CLOTHING]:         RETENTION_PERIODS.CLOTHING,
+      [ItemCategory.ACCESSORIES]:      RETENTION_PERIODS.ACCESSORIES,
+      [ItemCategory.BOOKS]:            RETENTION_PERIODS.BOOKS,
+      [ItemCategory.SPORTS_EQUIPMENT]: RETENTION_PERIODS.SPORTS_EQUIPMENT,
+      [ItemCategory.OTHER]:            RETENTION_PERIODS.OTHER,
+    };
 
-    return parseInt(process.env.RETENTION_PERIOD_DEFAULT || '30');
+    return retentionMap[category] ?? RETENTION_PERIODS.DEFAULT;
   }
 
   private validateStatusTransition(
@@ -276,6 +305,23 @@ class ItemService {
     return description.length > 100
       ? description.substring(0, 100) + '...'
       : description;
+  }
+
+  async deleteItem(itemId: string, userId: string): Promise<void> {
+    const item = await Item.findById(itemId);
+    if (!item) throw new NotFoundError('Item not found');
+
+    // Only Admin or Staff should be able to delete items (handled in controller via RBAC usually)
+    item.deletedAt = new Date();
+    await item.save();
+
+    await activityService.logActivity({
+      action: ActivityAction.ITEM_UPDATED,
+      userId,
+      entityType: 'Item',
+      entityId: itemId,
+      metadata: { action: 'DELETED_SOFT' },
+    });
   }
 }
 

@@ -14,7 +14,18 @@ import { UserRole } from '../../common/types';
 import { strictLimiter } from '../../common/middlewares/rateLimit.middleware';
 import { uploadArray } from '../../common/middlewares/multer.middleware';
 
+import anonymousClaimController from './anonymous-claim.controller';
+
 const router = Router();
+
+// Anonymous Claims (Public)
+router.post(
+  '/anonymous',
+  // validation middleware if needed, e.g. validate(createAnonymousClaimValidation)
+  strictLimiter,
+  uploadArray('files'),
+  anonymousClaimController.createAnonymousClaim
+);
 
 // All routes require authentication
 router.use(authenticate);
@@ -71,5 +82,29 @@ router.post(
   validate(rejectClaimValidation),
   claimController.rejectClaim
 );
+
+// Request proof manually (Staff/Admin)
+router.post(
+  '/:id/request-proof',
+  requireRole(UserRole.STAFF, UserRole.ADMIN),
+  claimController.requestProof
+);
+
+// Challenge-response question (Staff/Admin)
+router.post(
+  '/:id/challenge-question',
+  requireRole(UserRole.STAFF, UserRole.ADMIN),
+  claimController.addChallengeQuestion
+);
+
+// Challenge-response answer (Claimant)
+router.post(
+  '/:id/challenge-answer/:challengeId',
+  requireRole(UserRole.CLAIMANT),
+  claimController.submitChallengeResponse
+);
+
+// Delete claim
+router.delete('/:id', claimController.deleteClaim);
 
 export default router;

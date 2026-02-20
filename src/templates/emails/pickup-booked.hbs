@@ -1,0 +1,21 @@
+{{> header title="Pickup Scheduled"}}
+
+<p>Hello,</p>
+
+<p>Your pickup has been successfully scheduled. Please arrive at the specified time to collect your item.</p>
+
+<div class="info-card">
+  <p><strong>Scheduled Date:</strong> {{formatDate pickupDate}}</p>
+  <p><strong>Scheduled Time:</strong> {{startTime}} - {{endTime}}</p>
+  <p><strong>Reference Code:</strong> <span class="badge">{{referenceCode}}</span></p>
+</div>
+
+<div style="background-color: #eff6ff; border: 1px solid #3b82f6; border-radius: 8px; padding: 16px; margin: 20px 0;">
+  <p style="color: #1e40af; margin: 0;"><strong>Important:</strong> Please bring a valid government photo ID and your reference code or QR code when you arrive.</p>
+</div>
+
+<div style="text-align: center;">
+  <a href="{{clientUrl}}/pickups/{{pickupId}}" class="button">View Pickup Details</a>
+</div>
+
+{{> footer}}

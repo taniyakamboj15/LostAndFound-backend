@@ -56,45 +56,41 @@ export function addMessage(session: ConversationSession, role: ChatMessage['role
   session.messages.push({ role, content, timestamp: new Date() });
 }
 
+const STEP_HANDLERS: Record<
+  Exclude<ConversationStep, 'COMPLETED' | 'CANCELLED'>,
+  (data: CollectedReportData) => ConversationStep
+> = {
+  GREETING: (data) => {
+    if (data.category && data.description && data.locationLost && data.dateLost) {
+      return data.identifyingFeatures ? 'COLLECTING_PHONE' : 'COLLECTING_FEATURES';
+    }
+    if (data.category) return data.description ? 'COLLECTING_LOCATION' : 'COLLECTING_DESCRIPTION';
+    return 'COLLECTING_CATEGORY';
+  },
+  COLLECTING_CATEGORY: (data) => 
+    data.category ? (data.description ? 'COLLECTING_LOCATION' : 'COLLECTING_DESCRIPTION') : 'COLLECTING_CATEGORY',
+  COLLECTING_DESCRIPTION: (data) => 
+    data.description ? (data.locationLost ? 'COLLECTING_DATE' : 'COLLECTING_LOCATION') : 'COLLECTING_DESCRIPTION',
+  COLLECTING_LOCATION: (data) => 
+    data.locationLost ? (data.dateLost ? 'COLLECTING_FEATURES' : 'COLLECTING_DATE') : 'COLLECTING_LOCATION',
+  COLLECTING_DATE: (data) => 
+    data.dateLost ? 'COLLECTING_FEATURES' : 'COLLECTING_DATE',
+  COLLECTING_FEATURES: () => 'COLLECTING_PHONE',
+  COLLECTING_PHONE: () => 'CONFIRMING',
+  CONFIRMING: () => 'CONFIRMING', // Handled specially for intent
+};
+
 export function getNextStep(
   currentStep: ConversationStep,
   data: CollectedReportData,
   intent: string
 ): ConversationStep {
   if (intent === 'cancel') return 'CANCELLED';
+  if (currentStep === 'CONFIRMING' && intent === 'confirm') return 'COMPLETED';
+  if (currentStep === 'COMPLETED' || currentStep === 'CANCELLED') return currentStep;
 
-  switch (currentStep) {
-    case 'GREETING':
-      if (data.category && data.description && data.locationLost && data.dateLost) {
-        return data.identifyingFeatures ? 'COLLECTING_PHONE' : 'COLLECTING_FEATURES';
-      }
-      if (data.category) return data.description ? 'COLLECTING_LOCATION' : 'COLLECTING_DESCRIPTION';
-      return 'COLLECTING_CATEGORY';
-
-    case 'COLLECTING_CATEGORY':
-      return data.category ? (data.description ? 'COLLECTING_LOCATION' : 'COLLECTING_DESCRIPTION') : 'COLLECTING_CATEGORY';
-
-    case 'COLLECTING_DESCRIPTION':
-      return data.description ? (data.locationLost ? 'COLLECTING_DATE' : 'COLLECTING_LOCATION') : 'COLLECTING_DESCRIPTION';
-
-    case 'COLLECTING_LOCATION':
-      return data.locationLost ? (data.dateLost ? 'COLLECTING_FEATURES' : 'COLLECTING_DATE') : 'COLLECTING_LOCATION';
-
-    case 'COLLECTING_DATE':
-      return data.dateLost ? 'COLLECTING_FEATURES' : 'COLLECTING_DATE';
-
-    case 'COLLECTING_FEATURES':
-      return 'COLLECTING_PHONE';
-
-    case 'COLLECTING_PHONE':
-      return 'CONFIRMING';
-
-    case 'CONFIRMING':
-      return intent === 'confirm' ? 'COMPLETED' : 'CONFIRMING';
-
-    default:
-      return currentStep;
-  }
+  const handler = STEP_HANDLERS[currentStep as keyof typeof STEP_HANDLERS];
+  return handler ? handler(data) : currentStep;
 }
 
 export function mergeExtractedData(

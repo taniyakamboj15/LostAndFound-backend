@@ -62,6 +62,10 @@ class LostReportController {
         contactEmail,
         contactPhone,
         identifyingFeatures,
+        brand,
+        color,
+        itemSize,
+        bagContents,
       } = req.body;
 
       const report = await lostReportService.createLostReport({
@@ -73,6 +77,12 @@ class LostReportController {
         contactEmail,
         contactPhone,
         identifyingFeatures,
+        brand,
+        color,
+        itemSize,
+        bagContents: typeof bagContents === 'string'
+          ? bagContents.split(',').map((b: string) => b.trim()).filter(Boolean)
+          : bagContents,
       });
 
       res.status(201).json({
@@ -321,6 +331,7 @@ class LostReportController {
       const report = await lostReportService.updateLostReport(
         req.params.id,
         req.user!.id,
+        req.user!.role,
         { description, contactPhone, identifyingFeatures }
       );
 
@@ -352,11 +363,22 @@ class LostReportController {
    */
   deleteReport = asyncHandler(
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-      await lostReportService.deleteLostReport(req.params.id, req.user!.id);
+      await lostReportService.deleteLostReport(req.params.id, req.user!.id, req.user!.role);
 
       res.json({
         success: true,
         message: 'Report deleted successfully',
+      });
+    }
+  );
+
+  toggleStarReport = asyncHandler(
+    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const report = await lostReportService.toggleStarReport(req.params.id, req.user!.id);
+      res.json({
+        success: true,
+        message: 'Report star toggled',
+        data: report,
       });
     }
   );

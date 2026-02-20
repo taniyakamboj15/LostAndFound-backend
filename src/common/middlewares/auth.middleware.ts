@@ -41,6 +41,36 @@ export const authenticate = asyncHandler(
   }
 );
 
+export const optionalAuthenticate = asyncHandler(
+  async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
+    const token = req.cookies?.accessToken;
+
+    if (!token) {
+      return next();
+    }
+
+    try {
+      const decoded = jwt.verify(
+        token,
+        JWT.ACCESS_TOKEN_SECRET
+      ) as TokenPayload;
+
+      (req as AuthenticatedRequest).user = {
+        id: decoded.id,
+        _id: decoded.id, 
+        email: decoded.email,
+        role: decoded.role,
+        isEmailVerified: decoded.isEmailVerified,
+      };
+      
+      next();
+    } catch (error) {
+      // Ignore token errors for optional authentication
+      next();
+    }
+  }
+);
+
 export const requireEmailVerification = asyncHandler(
   async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
     const authReq = req as AuthenticatedRequest;

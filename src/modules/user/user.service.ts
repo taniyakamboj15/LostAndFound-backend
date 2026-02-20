@@ -1,7 +1,9 @@
 import { v4 as uuidv4 } from 'uuid';
 import User, { IUser } from './user.model';
+import Claim from '../claim/claim.model';
 import { NotFoundError, ValidationError } from '../../common/errors';
 import transporter from '../../config/email';
+import logger from '../../common/utils/logger';
 
 class UserService {
   async createUser(data: {
@@ -26,7 +28,8 @@ class UserService {
       emailVerificationExpires,
     });
 
-    // Send verification email
+    await this.linkAnonymousClaims(user.email, user._id.toString());
+
     await this.sendVerificationEmail(user.email, emailVerificationToken);
 
     return user;
@@ -53,7 +56,7 @@ class UserService {
 
   async updateUser(
     userId: string,
-    data: Partial<Pick<IUser, 'name' | 'phone' | 'avatar'>>
+    data: Partial<Pick<IUser, 'name' | 'phone' | 'avatar' | 'notificationPreferences'>>
   ): Promise<IUser> {
     const user = await User.findByIdAndUpdate(userId, data, {
       new: true,
@@ -82,6 +85,9 @@ class UserService {
     user.emailVerificationExpires = undefined;
     await user.save();
 
+    // Retroactively link anonymous claims on email verification too
+    await this.linkAnonymousClaims(user.email, user._id.toString());
+
     return user;
   }
 
@@ -106,6 +112,26 @@ class UserService {
     await user.save();
 
     await this.sendVerificationEmail(email, emailVerificationToken);
+  }
+
+  /**
+   * Link all anonymous claims that were filed with the given email
+   * to the newly created (or verified) user account.
+   * This is idempotent — claims already linked are skipped.
+   */
+  async linkAnonymousClaims(email: string, userId: string): Promise<void> {
+    try {
+      const result = await Claim.updateMany(
+        { isAnonymous: true, email, claimantId: { $exists: false } },
+        { $set: { claimantId: userId, isAnonymous: false } }
+      );
+      if (result.modifiedCount > 0) {
+        logger.info(`Linked ${result.modifiedCount} anonymous claim(s) to user ${userId} (email: ${email})`);
+      }
+    } catch (err) {
+      // Non-blocking — don't fail registration if linking errors
+      logger.warn('Failed to link anonymous claims:', err);
+    }
   }
 
   private async sendVerificationEmail(

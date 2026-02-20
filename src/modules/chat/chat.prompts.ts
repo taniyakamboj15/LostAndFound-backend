@@ -48,35 +48,37 @@ Rules:
 - Cancellation → intent: "cancel"`;
 }
 
+const STEP_PROMPTS: Record<ConversationStep, (data: CollectedReportData) => string> = {
+  GREETING: () => 
+    "Hello! I'm your Lost & Found assistant 🤖\n\nI can help you:\n• 📋 **File a lost item report**\n• 🔍 **Search found items**\n• 📄 **View your reports**\n• 🔗 **Check matches for your report**\n• 📦 **View your pickups**\n\nWhat would you like to do?",
+  COLLECTING_CATEGORY: () => 
+    'What type of item did you lose? (Electronics, Bags, Documents, Keys, Clothing, Accessories, Jewelry, Books, Sports Equipment, or Other)',
+  COLLECTING_DESCRIPTION: () => 
+    'Can you describe the item? (color, brand, model, size, etc.)',
+  COLLECTING_LOCATION: () => 
+    'Where did you lose it? Be as specific as possible (building, floor, area, etc.)',
+  COLLECTING_DATE: () => 
+    'When did you lose it? (today, yesterday, or a specific date)',
+  COLLECTING_FEATURES: () => 
+    "Any unique identifying features? (serial number, stickers, engravings) Say 'none' to skip.",
+  COLLECTING_PHONE: () => 
+    "Your contact phone number? (optional — say 'skip' to skip)",
+  CONFIRMING: (data) => [
+    'Please confirm your report:',
+    `• **Category:** ${data.category}`,
+    `• **Description:** ${data.description}`,
+    `• **Location:** ${data.locationLost}`,
+    `• **Date:** ${data.dateLost?.toLocaleDateString()}`,
+    `• **Features:** ${data.identifyingFeatures?.join(', ') || 'None'}`,
+    `• **Phone:** ${data.contactPhone || 'Not provided'}`,
+    '',
+    'Type **"confirm"** to file or **"cancel"** to start over.',
+  ].join('\n'),
+  COMPLETED: () => '',
+  CANCELLED: () => '',
+};
+
 export function getStepPrompt(step: ConversationStep, data: CollectedReportData): string {
-  switch (step) {
-    case 'GREETING':
-      return "Hello! I'm your Lost & Found assistant 🤖\n\nI can help you:\n• 📋 **File a lost item report**\n• 🔍 **Search found items**\n• 📄 **View your reports**\n• 🔗 **Check matches for your report**\n• 📦 **View your pickups**\n\nWhat would you like to do?";
-    case 'COLLECTING_CATEGORY':
-      return 'What type of item did you lose? (Electronics, Bags, Documents, Keys, Clothing, Accessories, Jewelry, Books, Sports Equipment, or Other)';
-    case 'COLLECTING_DESCRIPTION':
-      return 'Can you describe the item? (color, brand, model, size, etc.)';
-    case 'COLLECTING_LOCATION':
-      return 'Where did you lose it? Be as specific as possible (building, floor, area, etc.)';
-    case 'COLLECTING_DATE':
-      return 'When did you lose it? (today, yesterday, or a specific date)';
-    case 'COLLECTING_FEATURES':
-      return "Any unique identifying features? (serial number, stickers, engravings) Say 'none' to skip.";
-    case 'COLLECTING_PHONE':
-      return "Your contact phone number? (optional — say 'skip' to skip)";
-    case 'CONFIRMING':
-      return [
-        'Please confirm your report:',
-        `• **Category:** ${data.category}`,
-        `• **Description:** ${data.description}`,
-        `• **Location:** ${data.locationLost}`,
-        `• **Date:** ${data.dateLost?.toLocaleDateString()}`,
-        `• **Features:** ${data.identifyingFeatures?.join(', ') || 'None'}`,
-        `• **Phone:** ${data.contactPhone || 'Not provided'}`,
-        '',
-        'Type **"confirm"** to file or **"cancel"** to start over.',
-      ].join('\n');
-    default:
-      return '';
-  }
+  const handler = STEP_PROMPTS[step];
+  return handler ? handler(data) : '';
 }

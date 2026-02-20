@@ -13,7 +13,15 @@ import { UserRole } from '../../common/types';
 
 const router = Router();
 
+
+
+// Public cities and pickup points for all authenticated users
+router.get('/pickup-points', storageController.getPickupPoints);
+router.get('/cities', storageController.getUniqueCities);
+
+
 router.use(authenticate);
+// Restricted storage management
 router.use(requireRole(UserRole.STAFF, UserRole.ADMIN));
 
 router.post(
@@ -31,6 +39,8 @@ router.get(
 
 
 router.get('/available', storageController.getAvailableStorage);
+
+router.get('/overflow-suggestions', requireRole(UserRole.ADMIN), storageController.getOverflowSuggestions);
 
 router.get(
   '/:id',

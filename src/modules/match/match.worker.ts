@@ -6,7 +6,7 @@ import matchService from './match.service';
 import logger from '../../common/utils/logger';
 import connectDB from '../../config/database';
 import { connectRedis } from '../../config/redis';
-// Ensure DB connection if running as standalone worker process
+
 if (require.main === module) {
   connectDB();
   connectRedis();

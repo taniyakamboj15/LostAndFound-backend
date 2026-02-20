@@ -1,5 +1,5 @@
 import mongoose, { Schema } from 'mongoose';
-import { ItemCategory, ILostReportModel } from '../../common/types';
+import { ItemCategory, ILostReportModel, ItemColor, ItemSize } from '../../common/types';
 
 export interface ILostReport extends ILostReportModel {}
 
@@ -47,6 +47,32 @@ const lostReportSchema = new Schema<ILostReport>(
     },
     contactPhone: String,
     identifyingFeatures: [String],
+    // Structured markers (mirrors item structured fields for matching)
+    brand: { type: String, trim: true },
+    color: {
+      type: String,
+      enum: Object.values(ItemColor),
+    },
+    itemSize: {
+      type: String,
+      enum: Object.values(ItemSize),
+    },
+    bagContents: [
+      {
+        type: String,
+        trim: true,
+      },
+    ],
+    starredBy: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: 'User',
+      },
+    ],
+    deletedAt: {
+      type: Date,
+      index: true,
+    },
   },
   {
     timestamps: true,
@@ -57,16 +83,23 @@ const lostReportSchema = new Schema<ILostReport>(
 lostReportSchema.index({ category: 1, dateLost: -1 });
 lostReportSchema.index({ keywords: 1 });
 lostReportSchema.index({ locationLost: 'text', description: 'text' });
+lostReportSchema.index({ reportedBy: 1, createdAt: -1 });
 
 // Extract keywords
-lostReportSchema.pre('save', function (next) {
+lostReportSchema.pre('save', function (this: ILostReport, next) {
   if (this.isModified('description')) {
     const words = this.description
       .toLowerCase()
       .split(/\s+/)
-      .filter((word) => word.length > 3);
+      .filter((word: string) => word.length > 3);
     this.keywords = [...new Set(words)];
   }
+  next();
+});
+
+// Middleware to exclude deleted reports by default
+lostReportSchema.pre(/^find/, function (this: mongoose.Query<ILostReport[], ILostReport>, next) {
+  this.where({ deletedAt: null });
   next();
 });
 

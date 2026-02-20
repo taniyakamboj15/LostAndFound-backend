@@ -38,4 +38,39 @@ router.post(
   matchController.generateMatches
 );
 
+// Get all matches (Staff/Admin) - for dashboard
+router.get(
+  '/',
+  requireRole(UserRole.STAFF, UserRole.ADMIN),
+  matchController.getAllMatches
+);
+
+// Get match threshold config (Staff/Admin)
+router.get(
+  '/config',
+  requireRole(UserRole.STAFF, UserRole.ADMIN),
+  matchController.getConfig
+);
+
+// Update match threshold config (Admin/Staff)
+router.put(
+  '/config',
+  requireRole(UserRole.ADMIN, UserRole.STAFF),
+  matchController.updateConfig
+);
+
+// Update match status (Staff/Admin)
+router.patch(
+  '/:id/status',
+  requireRole(UserRole.STAFF, UserRole.ADMIN),
+  matchController.updateMatchStatus
+);
+
+// Re-scan all pending matches (Admin/Staff)
+router.post(
+  '/rescan',
+  requireRole(UserRole.ADMIN, UserRole.STAFF),
+  matchController.rescan
+);
+
 export default router;

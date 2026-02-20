@@ -89,6 +89,9 @@ class SessionController {
       password
     );
 
+    // Retroactively link any anonymous claims on login
+    await userService.linkAnonymousClaims(user.email, user._id.toString());
+
     // Set httpOnly cookies
     res.cookie('accessToken', tokens.accessToken, {
       httpOnly: true,

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import itemController from './item.controller';
-import { authenticate } from '../../common/middlewares/auth.middleware';
+import { authenticate, optionalAuthenticate } from '../../common/middlewares/auth.middleware';
 import { requireRole } from '../../common/middlewares/rbac.middleware';
 import { validate } from '../../common/middlewares/validation.middleware';
 import {
@@ -22,8 +22,8 @@ router.get(
   itemController.searchPublicItems
 );
 
-// Get item by ID (Public)
-router.get('/:id', itemController.getItemById);
+// Get item by ID (Public with optional auth for staff roles)
+router.get('/:id', optionalAuthenticate, itemController.getItemById);
 
 // All other routes require authentication
 router.use(authenticate);
@@ -62,6 +62,13 @@ router.patch(
   requireRole(UserRole.STAFF, UserRole.ADMIN),
   validate(assignStorageValidation),
   itemController.assignStorage
+);
+
+// Delete item (Admin/Staff)
+router.delete(
+  '/:id',
+  requireRole(UserRole.ADMIN, UserRole.STAFF),
+  itemController.deleteItem
 );
 
 export default router;

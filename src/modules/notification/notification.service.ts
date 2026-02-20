@@ -1,82 +1,14 @@
-import { notificationQueue } from './notification.queue';
+import { pushQueue, emailQueue, smsQueue } from './notification.queue';
 import { NotificationPayload, EmailTemplate } from './notification.types';
 import { NotificationEvent } from '../../common/types';
 import User from '../user/user.model';
+import NotificationModel from './notification.model';
 import transporter from '../../config/email';
 import handlebars from 'handlebars';
 import logger from '../../common/utils/logger';
+import { TEMPLATE_FILES, EMAIL_SUBJECTS, FALLBACK_TEMPLATES } from './notification.constants';
 import fs from 'fs';
 import path from 'path';
-
-// ─── Template file registry (event → .hbs filename) ───────────────────────
-const TEMPLATE_FILES: Record<NotificationEvent, string> = {
-  [NotificationEvent.MATCH_FOUND]:             'match-found.hbs',
-  [NotificationEvent.CLAIM_STATUS_UPDATE]:     'claim-status-update.hbs',
-  [NotificationEvent.RETENTION_EXPIRY_WARNING]:'retention-expiry-warning.hbs',
-  [NotificationEvent.PICKUP_REMINDER]:         'pickup-reminder.hbs',
-  [NotificationEvent.EMAIL_VERIFICATION]:      'email-verification.hbs',
-  [NotificationEvent.PROOF_REQUESTED]:         'proof-requested.hbs',
-  [NotificationEvent.PICKUP_BOOKED]:           'pickup-booked.hbs',
-  [NotificationEvent.PAYMENT_REQUIRED]:        'payment-required.hbs',
-  [NotificationEvent.PAYMENT_RECEIVED]:        'payment-received.hbs',
-};
-
-// ─── Email subjects ────────────────────────────────────────────────────────
-type SubjectResolver = string | ((d: Record<string, unknown>) => string);
-
-const EMAIL_SUBJECTS: Record<NotificationEvent, SubjectResolver> = {
-  [NotificationEvent.MATCH_FOUND]:             'Potential Match Found for Your Lost Item',
-  [NotificationEvent.CLAIM_STATUS_UPDATE]:     (d) => `Claim Status Update: ${d.status}`,
-  [NotificationEvent.RETENTION_EXPIRY_WARNING]:'Item Retention Expiring Soon',
-  [NotificationEvent.PICKUP_REMINDER]:         'Pickup Reminder — Tomorrow',
-  [NotificationEvent.EMAIL_VERIFICATION]:      'Verify Your Email Address',
-  [NotificationEvent.PROOF_REQUESTED]:         'Proof of Ownership Required',
-  [NotificationEvent.PICKUP_BOOKED]:           'Your Pickup Has Been Confirmed',
-  [NotificationEvent.PAYMENT_REQUIRED]:        (d) => `Action Required: Pay ₹${d.totalAmount} to Schedule Pickup`,
-  [NotificationEvent.PAYMENT_RECEIVED]:        (d) => `Payment Confirmed — ₹${d.totalAmount} Received`,
-};
-
-// ─── Plain-text fallback templates (used when .hbs file is missing) ────────
-const FALLBACK_TEMPLATES: Record<NotificationEvent, (d: Record<string, unknown>, clientUrl: string) => EmailTemplate> = {
-  [NotificationEvent.MATCH_FOUND]: (d, url) => ({
-    subject: 'Potential Match Found for Your Lost Item',
-    html: `<h2>Great News!</h2><p>We found a potential match (${((d.confidenceScore as number) * 100).toFixed(0)}% confidence).</p><p><a href="${url}/matches/${d.matchId}">View Match</a></p>`,
-  }),
-  [NotificationEvent.CLAIM_STATUS_UPDATE]: (d, url) => ({
-    subject: `Claim Status Update: ${d.status}`,
-    html: `<h2>Status Updated</h2><p>Your claim is now: <strong>${d.status}</strong></p>${d.notes ? `<p>${d.notes}</p>` : ''}<p><a href="${url}/claims/${d.claimId}">View Claim</a></p>`,
-  }),
-  [NotificationEvent.RETENTION_EXPIRY_WARNING]: (d) => ({
-    subject: 'Item Retention Expiring Soon',
-    html: `<h2>Retention Expiry Warning</h2><p>Your item will be disposed in <strong>${d.daysRemaining} days</strong>. Please take action.</p>`,
-  }),
-  [NotificationEvent.PICKUP_REMINDER]: (d) => ({
-    subject: 'Pickup Reminder — Tomorrow',
-    html: `<h2>Pickup Reminder</h2><p><strong>${d.pickupDate}</strong>, ${d.startTime}–${d.endTime}</p><p>Reference: <code>${d.referenceCode}</code></p>`,
-  }),
-  [NotificationEvent.EMAIL_VERIFICATION]: (d, url) => ({
-    subject: 'Verify Your Email Address',
-    html: `<h2>Verify Your Email</h2><p><a href="${url}/verify-email?token=${d.token}">Click here to verify your email</a>. This link expires in 24 hours.</p>`,
-  }),
-  [NotificationEvent.PROOF_REQUESTED]: (d, url) => ({
-    subject: 'Proof of Ownership Required',
-    html: `<h2>Proof Required</h2><p>Please upload proof of ownership for your claim.</p><p><a href="${url}/claims/${d.claimId}/upload-proof">Upload Proof</a></p>`,
-  }),
-  [NotificationEvent.PICKUP_BOOKED]: (d) => ({
-    subject: 'Your Pickup Has Been Confirmed',
-    html: `<h2>Pickup Confirmed</h2><p>${new Date(d.pickupDate as string).toLocaleDateString('en-IN')}, ${d.startTime}–${d.endTime}</p><p>Reference: <code>${d.referenceCode}</code></p>`,
-  }),
-  [NotificationEvent.PAYMENT_REQUIRED]: (d, url) => ({
-    subject: `Action Required: Pay ₹${d.totalAmount} to Schedule Pickup`,
-    html: `<h2>Payment Required</h2><p>Hi ${d.claimantName},</p><p>Your claim is verified. Please pay <strong>₹${d.totalAmount}</strong> to schedule pickup.</p><p><a href="${url}/claims/${d.claimId}">Pay Now</a></p>`,
-  }),
-  [NotificationEvent.PAYMENT_RECEIVED]: (d, url) => ({
-    subject: `Payment Confirmed — ₹${d.totalAmount} Received`,
-    html: `<h2>Payment Received</h2><p>Hi ${d.claimantName},</p><p>₹<strong>${d.totalAmount}</strong> received on ${d.paidAt}.</p><p>You can now schedule your pickup.</p><p><a href="${url}/claims/${d.claimId}">Schedule Pickup</a></p>`,
-  }),
-};
-
-// ─── Service ───────────────────────────────────────────────────────────────
 
 class NotificationService {
   private readonly templates = new Map<NotificationEvent, HandlebarsTemplateDelegate>();
@@ -88,38 +20,206 @@ class NotificationService {
     this.loadTemplates();
   }
 
-  // ── BullMQ ────────────────────────────────────────────────────────────────
 
-  /**
-   * Queue a notification job. Uses a 30-second deduplication window via jobId
-   * so that rapid retries or duplicate triggers don't send multiple emails.
-   */
   async queueNotification(payload: NotificationPayload): Promise<void> {
-    const windowId = Math.floor(Date.now() / 30_000);
-    await notificationQueue.add('send-notification', payload, {
-      jobId: `${payload.event}-${payload.userId}-${windowId}`,
-    });
+    await this.queueEscalatingNotification(payload);
   }
 
-  // ── Worker entry point ────────────────────────────────────────────────────
-
   /**
-   * Called by the BullMQ worker for each job. Resolves the recipient user,
-   * injects their name into the template context, and sends the email.
+   * Multi-channel escalation:
+   *  1. DB Notification created for tracking
+   *  2. Push (in-app) immediately
+   *  3. Email after 24 hours (if user has not responded / opted in)
+   *  4. SMS after 72 hours
    */
-  async processNotification(payload: NotificationPayload): Promise<void> {
-    const user = await User.findById(payload.userId).select('name email').lean();
-    if (!user) throw new Error(`User not found: ${payload.userId}`);
+  async queueEscalatingNotification(payload: Omit<NotificationPayload, 'channels'>): Promise<void> {
+    const baseId = `${payload.event}-${payload.userId}-${Date.now()}`;
+    
+    let notificationDoc = null;
+    let title = this.resolveSubject(payload.event, payload.data);
 
-    // Inject the resolved user name so templates can use {{claimantName}} / {{userName}}
-    const enrichedData: Record<string, unknown> = {
-      ...payload.data,
-      claimantName: user.name,
-      userName: user.name,
+    // Fetch user preferences early
+    let prefs = { channels: ['IN_APP', 'EMAIL', 'PUSH'], emailOptOut: false, smsOptOut: false };
+    if (payload.userId) {
+       const user = await User.findById(payload.userId).select('notificationPreferences').lean();
+       if (user && user.notificationPreferences) {
+           const p = user.notificationPreferences;
+           prefs = {
+               channels: p.channels || prefs.channels,
+               emailOptOut: p.emailOptOut ?? prefs.emailOptOut,
+               smsOptOut: p.smsOptOut ?? prefs.smsOptOut
+           };
+       }
+    }
+    const channels = prefs.channels || [];
+    const emailOptOut = prefs.emailOptOut || false;
+    const smsOptOut = prefs.smsOptOut || false;
+    
+    // Create DB notification if for a registered user
+    if (payload.userId) {
+       notificationDoc = await NotificationModel.create({
+          userId: payload.userId,
+          event: payload.event,
+          title,
+          body: title, // You could expand this to resolve a short body string
+          data: payload.data,
+          referenceId: payload.referenceId,
+          channelsSent: [],
+       });
+    }
+
+    const jobData = {
+        ...payload,
+        notificationId: notificationDoc?._id.toString()
     };
 
-    const template = this.buildTemplate(payload.event, enrichedData);
-    await this.sendEmail(user.email, template);
+    // Step 1: In-app / push — immediate
+    if (channels.includes('PUSH') || channels.includes('IN_APP') || !payload.userId) {
+       await pushQueue.add('send-push', jobData, { jobId: `${baseId}-push` });
+    }
+
+    // Step 2: Email — immediate for urgent events, otherwise after 24h escalation
+    const IMMEDIATE_EMAIL_EVENTS = new Set([
+      NotificationEvent.TRANSFER_ARRIVED,
+      NotificationEvent.TRANSFER_SENT,
+      NotificationEvent.PAYMENT_RECEIVED,
+      NotificationEvent.PICKUP_BOOKED,
+      NotificationEvent.PROOF_REQUESTED,
+    ]);
+
+    if (!emailOptOut && channels.includes('EMAIL') && (payload.recipientEmail || payload.userId)) {
+       const emailDelay = IMMEDIATE_EMAIL_EVENTS.has(payload.event)
+         ? 0
+         : parseInt(process.env.ESCALATION_EMAIL_DELAY_MS || '86400000');
+       await emailQueue.add('send-email', jobData, {
+           jobId: `${baseId}-email`,
+           delay: emailDelay,
+       });
+    }
+
+    if (!smsOptOut && channels.includes('SMS') && (payload.recipientPhone || payload.userId)) {
+       await smsQueue.add('send-sms', jobData, {
+           jobId: `${baseId}-sms`,
+           delay: parseInt(process.env.ESCALATION_SMS_DELAY_MS || '259200000'),
+       });
+    }
+
+    logger.info(`[Escalation] Queued verified escalation steps for user ${payload.userId}, event: ${payload.event}`);
+  }
+
+  /**
+   * Broadcast a notification to all Admin and Staff users.
+   */
+  async notifyStaff(payload: Omit<NotificationPayload, 'userId'>): Promise<void> {
+    const staffUsers = await User.find({
+      role: { $in: ['ADMIN', 'STAFF'] }
+    }).select('_id email notificationPreferences').lean();
+
+    const tasks = staffUsers.map(staff => 
+      this.queueEscalatingNotification({
+        ...payload,
+        userId: staff._id.toString()
+      })
+    );
+
+    await Promise.all(tasks);
+    logger.info(`[Broadcast] Queued notifications for ${staffUsers.length} staff members for event: ${payload.event}`);
+  }
+
+  // ── Worker specific entry points ──────────────────────────────────────────
+
+  async processPush(payload: NotificationPayload): Promise<void> {
+    if (!payload.userId) return; // Push requires a known app user
+
+    const user = await User.findById(payload.userId).select('notificationPreferences').lean();
+    if (!user) return;
+
+    const prefs = user.notificationPreferences || { channels: ['IN_APP', 'EMAIL'] };
+    const channels = prefs.channels || [];
+    if (!channels.includes('PUSH') && !channels.includes('IN_APP')) {
+        logger.info(`[Push] User ${payload.userId} opted out of PUSH. Skipping.`);
+        return;
+    }
+
+    // Mark that push was "sent" in db
+    if (payload.notificationId) {
+       await NotificationModel.findByIdAndUpdate(payload.notificationId, { $addToSet: { channelsSent: 'PUSH' } });
+    }
+
+    logger.info(`[Push] In-app notification available for User ${payload.userId}: ${payload.event}`);
+    // Real-time socket emit or Firebase FCM delivery would happen here.
+  }
+
+  async processEmail(payload: NotificationPayload): Promise<void> {
+      // Escalation Check: If read in-app, skip!
+      if (payload.notificationId) {
+          const notif = await NotificationModel.findById(payload.notificationId).lean();
+          if (notif && notif.isRead) {
+              logger.info(`[Email] Notification ${payload.notificationId} already read. Skipping email.`);
+              return;
+          }
+      }
+
+      await this.resolveAndSendSingleChannel(payload, 'EMAIL');
+  }
+
+  async processSMS(payload: NotificationPayload): Promise<void> {
+      // Escalation Check: If read in-app, skip!
+      if (payload.notificationId) {
+          const notif = await NotificationModel.findById(payload.notificationId).lean();
+          if (notif && notif.isRead) {
+              logger.info(`[SMS] Notification ${payload.notificationId} already read. Skipping SMS.`);
+              return;
+          }
+      }
+      
+      await this.resolveAndSendSingleChannel(payload, 'SMS');
+  }
+
+  private async resolveAndSendSingleChannel(payload: NotificationPayload, channel: 'EMAIL' | 'SMS'): Promise<void> {
+
+    let email = payload.recipientEmail;
+    let name = (payload.data.userName || payload.data.claimantName || 'Customer') as string;
+
+    if (payload.userId) {
+      const user = await User.findById(payload.userId).select('name email phone notificationPreferences').lean();
+      if (user) {
+        // Preference check
+        const prefs = user.notificationPreferences || { channels: ['IN_APP', 'EMAIL'] };
+        const channels = prefs.channels || [];
+        if (channel === 'EMAIL' && (user.notificationPreferences?.emailOptOut || !channels.includes('EMAIL'))) {
+            logger.info(`[Email] User ${payload.userId} opted out of EMAIL. Skipping.`);
+            return;
+        }
+        if (channel === 'SMS' && (user.notificationPreferences?.smsOptOut || !channels.includes('SMS'))) {
+            logger.info(`[SMS] User ${payload.userId} opted out of SMS. Skipping.`);
+            return;
+        }
+
+        email = user.email;
+        name = user.name;
+        if (!payload.recipientPhone) payload.recipientPhone = user.phone;
+      }
+    }
+
+    if (channel === 'EMAIL' && !email) return;
+    if (channel === 'SMS' && !payload.recipientPhone) return;
+
+    const enrichedData = { ...payload.data, claimantName: name, userName: name };
+
+    if (channel === 'EMAIL' && email) {
+        const template = this.buildTemplate(payload.event, enrichedData);
+        await this.sendEmail(email, template);
+        if (payload.notificationId) await NotificationModel.findByIdAndUpdate(payload.notificationId, { $addToSet: { channelsSent: 'EMAIL' } });
+    } else if (channel === 'SMS' && payload.recipientPhone) {
+        await this.sendSMS(payload.recipientPhone, payload.event, enrichedData);
+        if (payload.notificationId) await NotificationModel.findByIdAndUpdate(payload.notificationId, { $addToSet: { channelsSent: 'SMS' } });
+    }
+  }
+
+  private async sendSMS(phone: string, event: NotificationEvent, _data: Record<string, unknown>) {
+      logger.info(`[SMS] To ${phone}: ${event}`);
+      // Mock integration for SMS as per implementation plan requirement
   }
 
   // ── Email sender ──────────────────────────────────────────────────────────
@@ -179,6 +279,11 @@ class NotificationService {
     handlebars.registerHelper('formatCurrency', (amount: number) =>
       `₹${Number(amount).toFixed(2)}`
     );
+    handlebars.registerHelper('formatDate', (date: Date | string) => {
+      if (!date) return '';
+      const d = new Date(date);
+      return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+    });
   }
 
   private loadTemplates(): void {

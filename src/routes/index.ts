@@ -12,6 +12,9 @@ import analyticsRoutes from '../modules/analytics/analytics.routes';
 import activityRoutes from '../modules/activity/activity.routes';
 import chatRoutes from '../modules/chat/chat.routes';
 import paymentRoutes from '../modules/payment/payment.routes';
+import fraudRoutes from '../modules/fraud/fraud.routes';
+import transferRoutes from '../modules/transfer/transfer.routes';
+import notificationRoutes from '../modules/notification/notification.routes';
 import { apiLimiter } from '../common/middlewares/rateLimit.middleware';
 import { sanitizeMiddleware } from '../common/middlewares/sanitize.middleware';
 const router = Router();
@@ -42,5 +45,8 @@ router.use('/analytics', analyticsRoutes);
 router.use('/activities', activityRoutes);
 router.use('/chat', chatRoutes);
 router.use('/payments', paymentRoutes);
+router.use('/fraud', fraudRoutes);
+router.use('/transfers', transferRoutes);
+router.use('/notifications', notificationRoutes);
 
 export default router;

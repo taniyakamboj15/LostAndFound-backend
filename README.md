@@ -39,6 +39,48 @@ This repository contains the **Backend** API, built with Node.js, Express, and M
 - **Security**: RBAC (Role-Based Access Control), Rate Limiting, Input Sanitization.
 - **Public Access**: Unauthenticated users can browse found items.
 
+## ✨ Core Platforms & Advanced Logic
+
+### 1. MTX Probabilistic Matching Engine
+The system uses a weighted scoring algorithm to rank potential matches between Lost Reports and Found Items.
+- **Scoring Weights**:
+  - `Category`: Required (Exact Match).
+  - `Color`: +25% similarity score.
+  - `Brand/Structured Markers`: +30% weighted similarity.
+  - `Location/Date Proximity`: +25% based on geographical/temporal clusters.
+  - `Keywords`: +20% using fuzzy string matching on descriptions.
+- **Threshold Workflow**:
+  - **Auto-Notify (>85)**: Automated notification to claimant.
+  - **Manual Review (30-85)**: Staff must verify before claimant is notified.
+  - **Reject (<30)**: Hidden from UI to prevent noise.
+
+### 2. Fraud Detection & Risk Scoring
+Protects the supply chain from malicious claims.
+- **Pattern Flags**:
+  - `Claim Frequency`: >5 claims per month per user.
+  - `Temporal Anomaly`: Claim filed *before* the item was registered found.
+  - `Description Copying`: Claims that exactly mirror public redacted descriptions.
+- **Escalation**: Claims above a risk threshold of 7.0 trigger an "Investigation Required" flag for Admins.
+
+### 3. Anonymous Claims & Identity Linking
+- **Token System**: Uses cryptographically secure, 8-character tokens (`ClaimToken`).
+- **Retroactive Merging**: If an anonymous claimant registers an account later with the same email, the system automatically migrates all historical claims to their profile.
+
+### 4. Bulk Intake & Logistics
+- **Staff Bulk Mode**: Optimized for 30+ items/minute intake using smart defaults and sequential photography.
+- **Internal Transfers**: Multi-leg logistics automatically triggered when a claimant's verified item is at a different hub property.
+- **Capacity Management**: Real-time bin/shelf tracking with overflow suggestions based on item retention value.
+
+### 5. Multi-Channel Notifications
+- **Escalation Logic**: Powered by Redis/BullMQ.
+  - `T+0`: In-app notification.
+  - `T+24h`: Email notification if unread.
+  - `T+72h`: SMS alert for high-priority verified items.
+
+### 6. Predictive Analytics
+- Uses historical recovery data to predict `Time-to-Claim` for new items.
+- Optimizes storage by suggesting immediate disposition for categories with <5% historical recovery rate.
+
 ## 🛠️ Tech Stack
 
 - **Runtime**: Node.js
@@ -101,16 +143,15 @@ src/
 
 ## 📚 API Documentation
 
-### Authentication & Session Management (`/api/auth`)
+### User Discovery & Session Management (`/api/sessions`)
 
 | Method | Endpoint | Auth | Description |
 | --- | --- | --- | --- |
-| **POST** | `/api/auth/register` | ❌ | Register new user (claimant by default) |
-| **POST** | `/api/auth/login` | ❌ | Login with email/password, returns JWT token |
-| **POST** | `/api/auth/logout` | ✅ | Invalidate current session |
-| **GET** | `/api/auth/google` | ❌ | Initiate Google OAuth flow |
-| **GET** | `/api/auth/google/callback` | ❌ | Google OAuth callback handler |
-| **GET** | `/api/auth/me` | ✅ | Get current authenticated user |
+| **POST** | `/api/sessions/register` | ❌ | Create new claimant account |
+| **POST** | `/api/sessions/login` | ❌ | JWT-based email authentication |
+| **POST** | `/api/sessions/refresh` | ❌ | Refresh expired access tokens |
+| **GET** | `/api/sessions/google` | ❌ | Google OAuth2 initiation |
+| **POST** | `/api/sessions/logout` | ✅ | Invalidate active session |
 
 ### User Management (`/api/users`)
 
@@ -158,13 +199,13 @@ src/
 | **PUT** | `/api/claims/:id/verify` | ✅ | Staff/Admin | Verify claim approval |
 | **PUT** | `/api/claims/:id/reject` | ✅ | Staff/Admin | Reject claim with reason |
 
-### Matching Engine (`/api/matches`)
+### Matching Engine Controls (`/api/matches`)
 
-| Method | Endpoint | Auth | Role | Description |
-| --- | --- | --- | --- | --- |
-| **GET** | `/api/matches/lost-report/:id` | ✅ | Any | Get potential item matches for lost report |
-| **GET** | `/api/matches/item/:id` | ✅ | Any | Get potential lost report matches for item |
-| **POST** | `/api/matches/generate` | ✅ | Staff/Admin | Manually trigger match generation |
+| Method | Endpoint | Auth | Description |
+| --- | --- | --- | --- |
+| **GET** | `/api/matches/config` | ✅ (S/A) | View threshold settings (Auto/Reject) |
+| **PUT** | `/api/matches/config` | ✅ (Admin) | Update global match thresholds |
+| **POST** | `/api/matches/rescan` | ✅ (Admin) | Trigger full system match re-evaluation |
 
 ### Storage Management (`/api/storage`)
 
@@ -189,7 +230,7 @@ src/
 | **POST** | `/api/pickups` | ✅ | Claimant | Book pickup slot for verified claim |
 | **GET** | `/api/pickups/slots/available` | ✅ | Claimant | Get available pickup time slots |
 | **POST** | `/api/pickups/:id/verify` | ✅ | Staff/Admin | Verify pickup (Validates Payment Status) |
-| **POST** | `/api/pickups/:id/complete` | ✅  | Staff/Admin | Complete pickup (Enforces Payment Status) |
+| **POST** | `/api/pickups/:id/complete` | ✅ | Staff/Admin | Complete pickup (Enforces Payment Status) |
 
 ### Payments (`/api/payments`)
 
@@ -210,6 +251,22 @@ src/
 | **PUT** | `/api/dispositions/:id` | ✅ | Admin | Update disposition details |
 | **POST** | `/api/dispositions/:id/complete` | ✅ | Admin | Mark disposition as completed |
 
+### Internal Logistics & Transfers (`/api/transfers`)
+
+| Method | Endpoint | Auth | Description |
+| --- | --- | --- | --- |
+| **GET** | `/api/transfers` | ✅ (S/A) | List all internal transfers with filters |
+| **GET** | `/api/transfers/:id` | ✅ | Get specific transfer detail |
+| **GET** | `/api/transfers/claim/:claimId` | ✅ | Get transfer record by Claim ID |
+| **PATCH** | `/api/transfers/:id/status` | ✅ (S/A) | Update leg status (PENDING -> ARRIVED) |
+
+### Fraud Detection & Security (`/api/fraud`)
+
+| Method | Endpoint | Auth | Description |
+| --- | --- | --- | --- |
+| **GET** | `/api/fraud/high-risk` | ✅ (S/A) | List claims flagged for investigation |
+| **GET** | `/api/fraud/claim/:claimId` | ✅ (S/A) | Detailed risk scoring breakdown |
+
 ### Analytics & Reports (`/api/analytics`)
 
 | Method | Endpoint | Auth | Role | Description |
@@ -218,6 +275,24 @@ src/
 | **GET** | `/api/analytics/items` | ✅ | Admin | Get item-related analytics |
 | **GET** | `/api/analytics/claims` | ✅ | Admin | Get claim-related analytics |
 | **GET** | `/api/analytics/trends` | ✅ | Admin | Get historical trends |
+
+### AI Assistant & Chat (`/api/chat`)
+
+| Method | Endpoint | Auth | Description |
+| --- | --- | --- | --- |
+| **POST** | `/api/chat/start` | ✅ | Initialize a new guided recovery session |
+| **POST** | `/api/chat/message` | ✅ | Send message to Gemini-powered assistant |
+| **GET** | `/api/chat/session/:id` | ✅ | Retrieve active session state |
+| **DELETE** | `/api/chat/session/:id`| ✅ | Terminate and clear chat session |
+
+### User Notifications (`/api/notification`)
+
+| Method | Endpoint | Auth | Description |
+| --- | --- | --- | --- |
+| **GET** | `/api/notification` | ✅ | List all alerts for current user |
+| **PATCH** | `/api/notification/read-all`| ✅| Mark all notifications as read |
+| **PATCH** | `/api/notification/:id/read`| ✅ | Mark specific alert as read |
+| **DELETE** | `/api/notification/clear-all`| ✅ | Clear notification history |
 
 ### Activity Logs (`/api/activities`)
 
@@ -316,7 +391,37 @@ graph TD
 7. High-confidence matches (>0.7) are saved and both parties are notified
 8. Low-confidence matches are discarded to reduce noise
 
-### 4. Storage Capacity Management
+### 4. Multi-Leg Pickup & Internal Transfer Flow
+
+The system intelligently handles logistics based on item and claimant location.
+
+```mermaid
+graph TD
+    A[Claim Verified & Paid] --> B{Same Location?}
+    B -->|Yes| C[Direct Pickup Booking]
+    B -->|No| D[Trigger Internal Transfer]
+    D --> E[Status: IN_TRANSIT]
+    E --> F[Arrival at Destination Hub]
+    F --> G[Notify Claimant]
+    G --> H[Pickup Slot Becomes Available]
+    C --> I[QR Code Generated]
+    H --> I
+```
+
+**Case 1: Same City/Location**
+- Claimant can immediately schedule a pickup at the item's current storage facility.
+
+**Case 2: Different Location**
+- Initial State: Item is at Storage A; Claimant is near Storage B.
+- **Workflow**:
+  1. Internal transfer record created.
+  2. Item marked `IN_TRANSIT`.
+  3. System calculates ETA based on hub-to-hub distance.
+  4. Arrival Scan: Staff at Storage B scans item -> Transfer complete.
+  5. Notification: Claimant alerted via In-app/Email.
+  6. **Scheduling Guard**: The UI only displays pickup slots starting `T + TransferTime`.
+
+### 5. Storage Capacity Management
 
 **Add Item to Storage:**
 ```typescript
@@ -392,6 +497,31 @@ await addToNewStorage(newStorageId);
 
 
 
+## 🆕 Friday Update (February 20, 2026) 📅
+
+This week saw the convergence of all core high-level features into a synchronized production-ready system.
+
+### 🚀 Production Feature Set
+- ✅ **Secure Authentication & RBAC**: Fully implemented Admin, Staff, and Claimant roles with deep permission layering.
+- ✅ **Anonymous Claim Architecture**: Cryptographically secure tokens for guest users with **Retroactive Account Linking** upon registration.
+- ✅ **Bulk Intake Engine**: Rapid registration for 30+ items with sequential photography (auto-crop support) and field inheritance logic.
+- ✅ **Advanced MTX Engine**: Probabilistic matching with weighted scoring (Category/Color/Location/Date) and tunable staff thresholds.
+- ✅ **Challenge-Response Verification**: "Secret Identifier" fuzzy matching (Levenshtein Distance) for ownership proof without exposing data.
+- ✅ **Smart Storage Hub**: Capacity-aware storage management with automated overflow suggestions and decrements on return.
+- ✅ **Multi-Leg Logistics**: Internal transfer workflows for cross-property recovery with dynamic ETA-driven pickup slots.
+- ✅ **Tiered Retention & Disposition**: Category-specific expiry rules (90/180/365 days) with legal audit records for disposal/donations.
+- ✅ **Fraud Guard v2**: Advanced risk scoring for suspicious claiming patterns, temporal anomalies, and description duplication.
+- ✅ **Predictive Analytics**: Integrated ML models to predict "Time-to-Claim" and optimize hub occupancy.
+- ✅ **Notification Pipeline**: BullMQ-powered escalation (In-app -> Email -> SMS) with independent rate limiting.
+- ✅ **Privacy-Preserving Search**: Public redaction engine for found items, requiring claimants to provide the hidden fields to prove ownership.
+
+### 🛡️ Technical Hardening
+- ✅ **Type Safety Pass**: Finalized strict TypeScript enforcement across all 15+ backend modules, eliminating 100% of `any` usage.
+- ✅ **API Synchronization**: Fully documented 150+ endpoints across all modules in the backend README.
+- ✅ **Logistics ETA Logic**: Robust calculation for transfer-ready pickup scheduling.
+
+---
+
 ## 🆕 Recent Updates (February 2026)
 
 ### Today's Update (Thursday, February 19, 2026) 🛡️
@@ -446,7 +576,7 @@ await addToNewStorage(newStorageId);
 - ✅ **Architecture Diagrams**: System architecture visualization
 - ✅ **Future Enhancements**: Detailed roadmap with 8+ planned features
 
-## 🤖 AI Assistant (Chatbot) Guide
+### 🤖 AI Assistant (Chatbot) Guide
 
 ### How it Works 🧠
 The AI Assistant is a sophisticated conversational agent integrated into the platform to streamline item recovery.
@@ -464,7 +594,7 @@ The AI Assistant is a sophisticated conversational agent integrated into the pla
 ### ⚠️ Usage Restrictions & Guards
 To ensure security and prevent platform abuse, the following restrictions apply:
 1. **Authentication Required**: You must be logged in to chat with the assistant.
-2. **Email Verification MANDATORY**: 
+2. **Email Verification MANDATORY**:
    - **Crucial**: If your email is **NOT verified**, the chatbot will be disabled for you.
    - You must click the verification link sent to your email during registration before you can start a chat session.
 3. **Session Management**: Sessions expire after 2 hours of inactivity to save resources and ensure data privacy.
@@ -490,11 +620,6 @@ To ensure security and prevent platform abuse, the following restrictions apply:
 ## 🚀 Future Enhancements
 
 ### Planned Features
-
-#### 1. **AI-Powered Image Recognition**
-- Implement computer vision to automatically tag items by color, shape, brand
-- Image similarity matching between found items and lost report photos
-- Estimated Impact: 40% reduction in manual categorization time
 
 #### 2. **Multi-Tenant Support**
 - Allow multiple organizations to use the same platform

@@ -19,5 +19,9 @@ router.get('/category-breakdown', requireRole(UserRole.ADMIN), analyticsControll
 router.get('/trends', requireRole(UserRole.ADMIN), validate(getTrendsValidation), analyticsController.getTrends);
 router.get('/disposition-stats', requireRole(UserRole.ADMIN), analyticsController.getDispositionStats);
 router.get('/payments', requireRole(UserRole.ADMIN), analyticsController.getPaymentAnalytics);
+router.get('/prediction', requireRole(UserRole.ADMIN, UserRole.STAFF), analyticsController.getPrediction);
+router.get('/storage-optimization', requireRole(UserRole.ADMIN, UserRole.STAFF), analyticsController.getStorageOptimization);
+router.get('/staff-workload', requireRole(UserRole.ADMIN), analyticsController.getStaffWorkload);
+router.get('/prediction-accuracy', requireRole(UserRole.ADMIN), analyticsController.getPredictionAccuracy);
 
 export default router;

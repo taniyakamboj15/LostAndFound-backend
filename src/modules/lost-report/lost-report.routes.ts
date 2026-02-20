@@ -52,11 +52,17 @@ router.patch(
   lostReportController.updateReport
 );
 
-// Delete report (Claimant - own reports only)
+// Delete report (Claimant/Staff/Admin)
 router.delete(
   '/:id',
-  requireRole(UserRole.CLAIMANT),
+  requireRole(UserRole.CLAIMANT, UserRole.STAFF, UserRole.ADMIN),
   lostReportController.deleteReport
+);
+
+// Toggle star
+router.post(
+  '/:id/star',
+  lostReportController.toggleStarReport
 );
 
 export default router;

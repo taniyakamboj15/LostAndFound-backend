@@ -1,7 +1,11 @@
 import { Response } from 'express';
+import mongoose from 'mongoose';
 import { asyncHandler } from '../../common/helpers/asyncHandler';
 import { AuthenticatedRequest } from '../../common/types';
 import storageService from './storage.service';
+import storageLogic from './storage.logic';
+import Item from '../item/item.model';
+import Match, { IMatch } from '../match/match.model';
 
 /**
  * @swagger
@@ -45,7 +49,7 @@ class StorageController {
    */
   createStorage = asyncHandler(
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-      const { name, location, shelfNumber, binNumber, capacity } = req.body;
+      const { name, location, shelfNumber, binNumber, capacity, city, address, isPickupPoint } = req.body;
 
       const storage = await storageService.createStorage({
         name,
@@ -53,12 +57,39 @@ class StorageController {
         shelfNumber,
         binNumber,
         capacity,
+        city,
+        address,
+        isPickupPoint,
       });
 
       res.status(201).json({
         success: true,
         message: 'Storage location created',
         data: storage,
+      });
+    }
+  );
+
+  /**
+   * GET /api/storage/pickup-points
+   * Returns a sanitized list of active pickup points for claimants.
+   */
+  getPickupPoints = asyncHandler(
+    async (_req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const storages = await storageService.getPickupPoints();
+      res.json({
+        success: true,
+        data: storages,
+      });
+    }
+  );
+
+  getUniqueCities = asyncHandler(
+    async (_req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const cities = await storageService.getUniqueCities();
+      res.json({
+        success: true,
+        data: cities,
       });
     }
   );
@@ -125,8 +156,9 @@ class StorageController {
    *         description: Available storage locations retrieved
    */
   getAvailableStorage = asyncHandler(
-    async (_req: AuthenticatedRequest, res: Response): Promise<void> => {
-      const storages = await storageService.getAvailableStorage();
+    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const { size } = req.query;
+      const storages = await storageService.getAvailableStorage(size as 'small' | 'medium' | 'large' | undefined);
 
       res.json({
         success: true,
@@ -203,7 +235,7 @@ class StorageController {
    */
   updateStorage = asyncHandler(
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-      const { name, location, shelfNumber, binNumber, capacity, isActive } = req.body;
+      const { name, location, shelfNumber, binNumber, capacity, isActive, city, address, isPickupPoint } = req.body;
 
       const storage = await storageService.updateStorage(req.params.id, {
         name,
@@ -212,6 +244,9 @@ class StorageController {
         binNumber,
         capacity,
         isActive,
+        city,
+        address,
+        isPickupPoint,
       });
 
       res.json({
@@ -247,6 +282,55 @@ class StorageController {
       res.json({
         success: true,
         message: 'Storage deleted successfully',
+      });
+    }
+  );
+
+  /**
+   * GET /api/storage/overflow-suggestions
+   * Returns item IDs that are the best candidates for overflow/transfer
+   * based on age (oldest 20% of items in storage).
+   */
+  getOverflowSuggestions = asyncHandler(
+    async (_req: AuthenticatedRequest, res: Response): Promise<void> => {
+      // Fetch all items currently in storage
+      const items = await Item.find({
+        storageLocation: { $exists: true, $ne: null },
+        status: 'AVAILABLE',
+      })
+        .select('_id dateFound storageLocation retentionExpiryDate')
+        .lean<{ _id: mongoose.Types.ObjectId; retentionExpiryDate: Date }[]>();
+
+      if (items.length === 0) {
+        res.json({ success: true, data: { suggestedItemIds: [], total: 0, message: 'No items in storage.' } });
+        return;
+      }
+
+      // Fetch highest confidence score per item
+      const itemScores = await Promise.all(items.map(async (item) => {
+        const bestMatch = await Match.findOne({ itemId: item._id, status: { $ne: 'REJECTED' } })
+          .sort({ confidenceScore: -1 })
+          .select('confidenceScore')
+          .lean<IMatch | null>();
+        
+        return {
+          _id: item._id,
+          retentionExpiryDate: item.retentionExpiryDate,
+          highestConfidence: bestMatch?.confidenceScore || 0
+        };
+      }));
+
+      const suggestedItemIds = storageLogic.suggestOverflowItems(itemScores);
+
+      res.json({
+        success: true,
+        data: {
+          suggestedItemIds,
+          total: suggestedItemIds.length,
+          message: suggestedItemIds.length === 0
+            ? 'No overflow candidates. Storage is within normal capacity.'
+            : `${suggestedItemIds.length} item(s) recommended for transfer or overflow.`,
+        },
       });
     }
   );

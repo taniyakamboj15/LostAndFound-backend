@@ -10,60 +10,70 @@ import connectDB from '../../config/database';
 // Connect to database
 connectDB();
 
-const worker = new Worker(
-  'notifications',
-  async (job: Job<NotificationPayload>) => {
-    logger.info(`Processing notification job ${job.id}`, {
-      event: job.data.event,
-      userId: job.data.userId,
-    });
+const connection = {
+  host: process.env.REDIS_HOST || 'localhost',
+  port: parseInt(process.env.REDIS_PORT || '6379'),
+  password: process.env.REDIS_PASSWORD || undefined,
+};
 
-    try {
-      await notificationService.processNotification(job.data);
-      logger.info(`Notification sent successfully for job ${job.id}`);
-    } catch (error) {
-      logger.error(`Failed to process notification job ${job.id}:`, error);
-      throw error;
-    }
+// 1. Push Worker: Fast, high concurrency
+const pushWorker = new Worker(
+  'push-notifications',
+  async (job: Job<NotificationPayload>) => {
+    logger.info(`[Push] Processing job ${job.id}`);
+    await notificationService.processPush(job.data);
   },
-  {
-    connection: {
-      host: process.env.REDIS_HOST || 'localhost',
-      port: parseInt(process.env.REDIS_PORT || '6379'),
-      password: process.env.REDIS_PASSWORD || undefined,
-    },
-    concurrency: 5,
-    limiter: {
-      max: 10,
-      duration: 1000, // 10 jobs per second
-    },
+  { 
+    connection, 
+    concurrency: 10,
+    limiter: { max: 50, duration: 1000 } // 50/sec
   }
 );
 
+// 2. Email Worker: Slower, medium concurrency (e.g. SES limits)
+const emailWorker = new Worker(
+  'email-notifications',
+  async (job: Job<NotificationPayload>) => {
+    logger.info(`[Email] Processing job ${job.id}`);
+    await notificationService.processEmail(job.data);
+  },
+  { 
+    connection, 
+    concurrency: 5,
+    limiter: { max: 10, duration: 1000 } // 10/sec
+  }
+);
 
-worker.on('completed', (job) => {
-  logger.info(`Job ${job.id} completed`);
+// 3. SMS Worker: Slowest, low concurrency (costly)
+const smsWorker = new Worker(
+  'sms-notifications',
+  async (job: Job<NotificationPayload>) => {
+    logger.info(`[SMS] Processing job ${job.id}`);
+    await notificationService.processSMS(job.data);
+  },
+  { 
+    connection, 
+    concurrency: 2,
+    limiter: { max: 5, duration: 1000 } // 5/sec
+  }
+);
+
+const workers = [pushWorker, emailWorker, smsWorker];
+
+workers.forEach(w => {
+  w.on('completed', job => logger.info(`Job ${job.id} completed on ${w.name}`));
+  w.on('failed', (job, err) => logger.error(`Job ${job?.id} failed on ${w.name}:`, err));
+  w.on('error', err => logger.error(`Worker error on ${w.name}:`, err));
 });
 
-worker.on('failed', (job, err) => {
-  logger.error(`Job ${job?.id} failed:`, err);
-});
-
-worker.on('error', (err) => {
-  logger.error('Worker error:', err);
-});
-
-logger.info('Notification worker started');
+logger.info('Notification workers (Push, Email, SMS) started');
 
 // Graceful shutdown
-process.on('SIGTERM', async () => {
-  logger.info('SIGTERM received, closing worker...');
-  await worker.close();
+const shutdown = async () => {
+  logger.info('Shutting down notification workers...');
+  await Promise.all(workers.map(w => w.close()));
   process.exit(0);
-});
+};
 
-process.on('SIGINT', async () => {
-  logger.info('SIGINT received, closing worker...');
-  await worker.close();
-  process.exit(0);
-});
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);

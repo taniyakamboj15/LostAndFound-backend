@@ -42,7 +42,7 @@ export const requireOwnVerifiedClaim = asyncHandler(async (
     return next(new NotFoundError('Claim not found'));
   }
 
-  if (claim.claimantId.toString() !== req.user!.id) {
+  if (!claim.claimantId || claim.claimantId.toString() !== req.user!.id) {
     return next(new AuthorizationError('You are not the claimant of this claim'));
   }
 

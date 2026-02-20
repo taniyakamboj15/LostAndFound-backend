@@ -1,0 +1,20 @@
+{{> header title="Anonymous Claim Created"}}
+
+<p>Hello,</p>
+
+<p>{{message}}</p>
+
+<div class="info-card" style="text-align: center;">
+  <p style="margin-bottom: 8px;"><strong>Your Access Token:</strong></p>
+  <div style="font-family: monospace; font-size: 24px; font-bold; letter-spacing: 4px; color: #3b82f6; background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px dashed #cbd5e1;">
+    {{token}}
+  </div>
+</div>
+
+<p>You can use this token to track the status of your claim anonymously or link it to a registered account later.</p>
+
+<div style="text-align: center; margin-top: 30px;">
+  <a href="{{clientUrl}}/claims/{{claimId}}?token={{token}}" class="button">Track Your Claim</a>
+</div>
+
+{{> footer}}

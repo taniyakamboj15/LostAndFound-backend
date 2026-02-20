@@ -74,7 +74,6 @@ export async function handleMyReports(userId: string): Promise<ChatQueryResult> 
     : { type: 'MY_REPORTS', reports, total: result.pagination.total, message: `You have ${result.pagination.total} report(s). Showing the latest ${reports.length}:` };
 }
 
-// ─── Check Matches ─────────────────────────────────────────────────────────────
 
 export async function handleCheckMatches(reportId: string | undefined, userId: string): Promise<ChatQueryResult> {
   let resolvedId = reportId;
@@ -87,7 +86,6 @@ export async function handleCheckMatches(reportId: string | undefined, userId: s
     resolvedId = latest.data[0]._id.toString();
   }
 
-  // Verify ownership — reportedBy is ObjectId, use String() to avoid 'never' issue
   try {
     const report = await lostReportService.getLostReportById(resolvedId);
     const ownerId = String(report.reportedBy);
@@ -101,7 +99,6 @@ export async function handleCheckMatches(reportId: string | undefined, userId: s
   const rawMatches = await matchService.getMatchesForReport(resolvedId);
 
   const matches: ChatMatch[] = rawMatches.slice(0, 5).map((m) => {
-    // itemId is populated — cast to access fields safely
     const item = m.itemId as unknown as {
       _id: { toString(): string };
       category: string;
@@ -128,8 +125,6 @@ export async function handleCheckMatches(reportId: string | undefined, userId: s
     ? { type: 'CHECK_MATCHES', matches: [], total: 0, message: `No matches yet for report ${resolvedId.slice(-6).toUpperCase()}. We'll email you when one is found!` }
     : { type: 'CHECK_MATCHES', matches, total: rawMatches.length, message: `${rawMatches.length} potential match(es) found (showing top ${matches.length}):` };
 }
-
-// ─── My Pickups ────────────────────────────────────────────────────────────────
 
 export async function handleMyPickups(userId: string): Promise<ChatQueryResult> {
   const result = await pickupService.getMyPickups(userId, { page: 1, limit: 5 });

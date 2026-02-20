@@ -1,83 +1,163 @@
 import Match, { IMatch } from './match.model';
-import Item from '../item/item.model';
-import LostReport from '../lost-report/lost-report.model';
-import { MatchScore } from '../../common/types';
+import Item, { IItem } from '../item/item.model';
+import LostReport, { ILostReport } from '../lost-report/lost-report.model';
+import Settings from '../settings/settings.model';
+import { MatchScore, NotificationEvent, ISettingsModel } from '../../common/types';
 import { NotFoundError } from '../../common/errors';
 import notificationService from '../notification/notification.service';
-import { NotificationEvent } from '../../common/types';
+import { calculateDateScore, calculateFeatureScore, calculateKeywordScore, calculateLocationScore, calculateColorScore } from './scoring';
+import logger from '../../common/utils/logger';
+import mongoose from 'mongoose';
+import pLimit from 'p-limit';
 
 class MatchService {
-  private readonly MATCH_THRESHOLD = parseFloat(
-    process.env.MATCH_CONFIDENCE_THRESHOLD || '0.4'
-  );
-  private readonly NOTIFICATION_THRESHOLD = parseFloat(
-    process.env.MATCH_NOTIFICATION_THRESHOLD || '0.5'
-  );
+  private async getSettings(): Promise<ISettingsModel> {
+    let settings = await Settings.findOne();
+    if (!settings) {
+      settings = await Settings.create({});
+    }
+    return settings;
+  }
+
+  /** Get current threshold configuration */
+  async getConfig() {
+    const settings = await this.getSettings();
+    return {
+      autoMatchThreshold: settings.autoMatchThreshold,
+      rejectThreshold: settings.rejectThreshold,
+      weights: settings.matchWeights,
+    };
+  }
+
+  /** Update thresholds and weights at runtime (Admin/Staff) */
+  async updateConfig(config: { autoMatchThreshold?: number; rejectThreshold?: number; weights?: Partial<ISettingsModel['matchWeights']> }) {
+    const settings = await this.getSettings();
+    if (config.autoMatchThreshold !== undefined) settings.autoMatchThreshold = config.autoMatchThreshold;
+    if (config.rejectThreshold !== undefined) settings.rejectThreshold = config.rejectThreshold;
+    if (config.weights) {
+      settings.matchWeights = { ...settings.matchWeights, ...config.weights };
+    }
+    await settings.save();
+    return this.getConfig();
+  }
 
   async generateMatches(source: { lostReportId?: string; itemId?: string }): Promise<IMatch[]> {
+    if (source.lostReportId) return this.handleNewReport(source.lostReportId);
+    if (source.itemId) return this.handleNewItem(source.itemId);
+    return [];
+  }
+
+  private async handleNewReport(reportId: string): Promise<IMatch[]> {
+    const report = await LostReport.findById(reportId);
+    if (!report) throw new NotFoundError('Lost report not found');
+
+    const items = await Item.find({ category: report.category, status: 'AVAILABLE' });
+    return this.processItemsForReport(items, report);
+  }
+
+  private async handleNewItem(itemId: string): Promise<IMatch[]> {
+    const item = await Item.findById(itemId).select('+secretIdentifiers');
+    if (!item) throw new NotFoundError('Item not found');
+
+    const reports = await LostReport.find({ category: item.category });
+    return this.processReportsForItem(item, reports);
+  }
+
+  private async processItemsForReport(items: IItem[], report: ILostReport): Promise<IMatch[]> {
+    const settings = await this.getSettings();
+    const limit = pLimit(10);
     const matches: IMatch[] = [];
 
-    if (source.lostReportId) {
-      // Case 1: New Lost Report -> Search for existing Items
-      const report = await LostReport.findById(source.lostReportId);
-      if (!report) throw new NotFoundError('Lost report not found');
+    await Promise.all(items.map((item) => limit(async () => {
+      const score = this.calculateMatchScore(item, report, settings.matchWeights);
+      if (score.totalScore < settings.rejectThreshold) return; 
 
-      const items = await Item.find({
-        category: report.category,
-        status: 'AVAILABLE',
-      });
-
-      for (const item of items) {
-        const score = this.calculateMatchScore(item, report);
-        if (score.totalScore >= this.MATCH_THRESHOLD) {
-          const match = await this.createMatch(item._id.toString(), report._id.toString(), score);
+      const session = await mongoose.startSession();
+      try {
+        await session.withTransaction(async () => {
+          const match = await this.createMatch(item._id.toString(), report._id.toString(), score, session);
           matches.push(match);
-          
-          await this.triggerNotification(match, report.reportedBy.toString(), score.totalScore);
-        }
+          await this.handleAutoMatch(match, report.reportedBy.toString(), score.totalScore, settings.autoMatchThreshold, settings.rejectThreshold, session);
+        });
+      } finally {
+        await session.endSession();
       }
-    } else if (source.itemId) {
-      // Case 2: New Item -> Search for existing Lost Reports
-      const item = await Item.findById(source.itemId);
-      if (!item) throw new NotFoundError('Item not found');
-
-      const reports = await LostReport.find({
-        category: item.category,
-      });
-
-      for (const report of reports) {
-        const score = this.calculateMatchScore(item, report);
-        if (score.totalScore >= this.MATCH_THRESHOLD) {
-          const match = await this.createMatch(item._id.toString(), report._id.toString(), score);
-          matches.push(match);
-
-          await this.triggerNotification(match, report.reportedBy.toString(), score.totalScore);
-        }
-      }
-    }
+    })));
 
     return matches;
   }
 
-  private async createMatch(itemId: string, lostReportId: string, score: MatchScore): Promise<IMatch> {
-    // Check if match already exists to avoid duplicates
-    const existingMatch = await Match.findOne({ itemId, lostReportId });
-    if (existingMatch) return existingMatch;
+  private async processReportsForItem(item: IItem, reports: ILostReport[]): Promise<IMatch[]> {
+    const settings = await this.getSettings();
+    const limit = pLimit(10);
+    const matches: IMatch[] = [];
 
-    return Match.create({
+    await Promise.all(reports.map((report) => limit(async () => {
+      const score = this.calculateMatchScore(item, report, settings.matchWeights);
+      if (score.totalScore < settings.rejectThreshold) return;
+
+      const session = await mongoose.startSession();
+      try {
+        await session.withTransaction(async () => {
+          const match = await this.createMatch(item._id.toString(), report._id.toString(), score, session);
+          matches.push(match);
+          await this.handleAutoMatch(match, report.reportedBy.toString(), score.totalScore, settings.autoMatchThreshold, settings.rejectThreshold, session);
+        });
+      } finally {
+        await session.endSession();
+      }
+    })));
+
+    return matches;
+  }
+
+  private async createMatch(itemId: string, lostReportId: string, score: MatchScore, session?: mongoose.ClientSession): Promise<IMatch> {
+    const existing = await Match.findOne({ itemId, lostReportId }).session(session || null);
+    if (existing) return existing;
+
+    const [match] = await Match.create([{
       itemId,
       lostReportId,
       confidenceScore: score.totalScore,
-      categoryScore: score.categoryScore,
-      keywordScore: score.keywordScore,
-      dateScore: score.dateScore,
-      locationScore: score.locationScore,
-      featureScore: score.featureScore,
-    });
+      categoryScore:   score.categoryScore,
+      keywordScore:    score.keywordScore,
+      dateScore:       score.dateScore,
+      locationScore:   score.locationScore,
+      featureScore:    score.featureScore,
+      colorScore:      score.colorScore,
+    }], { session });
+
+    return match;
   }
 
-  private async triggerNotification(match: IMatch, userId: string, score: number): Promise<void> {
-    if (score >= this.NOTIFICATION_THRESHOLD && !match.notified) {
+  private async handleAutoMatch(
+    match: IMatch, 
+    userId: string, 
+    score: number, 
+    autoThreshold: number, 
+    rejectThreshold: number,
+    session?: mongoose.ClientSession
+  ): Promise<void> {
+    if (score >= autoThreshold && match.status === 'PENDING') {
+      match.status = 'AUTO_CONFIRMED';
+      match.notified = true;
+      await match.save({ session });
+
+      await notificationService.queueNotification({
+        event: NotificationEvent.MATCH_FOUND,
+        userId,
+        data: {
+          matchId: match._id.toString(),
+          itemId: match.itemId.toString(),
+          confidenceScore: score,
+          autoConfirmed: true,
+        },
+      });
+      logger.info(`[Match] Auto-confirmed match ${match._id} (score=${score})`);
+      return;
+    }
+
+    if (score >= rejectThreshold && !match.notified) {
       await notificationService.queueNotification({
         event: NotificationEvent.MATCH_FOUND,
         userId,
@@ -87,9 +167,8 @@ class MatchService {
           confidenceScore: score,
         },
       });
-
       match.notified = true;
-      await match.save();
+      await match.save({ session });
     }
   }
 
@@ -107,167 +186,141 @@ class MatchService {
       .populate('lostReportId');
   }
 
+  async reScanAll(): Promise<void> {
+    const settings = await this.getSettings();
+    const pendingMatches = await Match.find({ status: 'PENDING' })
+      .populate('itemId')
+      .populate('lostReportId');
+
+    const limit = pLimit(5); // Conservative limit for re-scan
+    await Promise.all(pendingMatches.map((match) => limit(async () => {
+      if (!match.itemId || !match.lostReportId) return;
+      
+      const item = match.itemId as unknown as IItem;
+      const report = match.lostReportId as unknown as ILostReport;
+      
+      const newScore = this.calculateMatchScore(item, report, settings.matchWeights);
+      
+      if (newScore.totalScore < settings.rejectThreshold) {
+        await Match.deleteOne({ _id: match._id });
+        return;
+      }
+      
+      match.confidenceScore = newScore.totalScore;
+      match.categoryScore   = newScore.categoryScore;
+      match.keywordScore    = newScore.keywordScore;
+      match.dateScore       = newScore.dateScore;
+      match.locationScore   = newScore.locationScore;
+      match.featureScore    = newScore.featureScore;
+      match.colorScore      = newScore.colorScore;
+      
+      if (newScore.totalScore >= settings.autoMatchThreshold) {
+        match.status = 'AUTO_CONFIRMED';
+      }
+      
+      await match.save();
+    })));
+  }
+
   private calculateMatchScore(
-    item: { keywords: string[]; dateFound: Date; locationFound: string; identifyingFeatures?: string[] },
-    report: { keywords: string[]; dateLost: Date; locationLost: string; identifyingFeatures?: string[] }
+    item: { keywords: string[]; dateFound: Date; locationFound: string; identifyingFeatures?: string[]; color?: string; brand?: string; itemSize?: string; bagContents?: string | string[] },
+    report: { keywords: string[]; dateLost: Date; locationLost: string; identifyingFeatures?: string[]; color?: string; brand?: string; itemSize?: string; bagContents?: string | string[] },
+    weights: ISettingsModel['matchWeights']
   ): MatchScore {
-    // Category score (already filtered, so 1.0)
-    const categoryScore = 1.0;
+    const categoryScore = 100;
 
-    // Keyword overlap score
-    const keywordScore = this.calculateKeywordScore(
-      item.keywords,
-      report.keywords
-    );
+    const keywordScore  = calculateKeywordScore(item.keywords, report.keywords)     * 100;
+    const dateScore     = calculateDateScore(item.dateFound, report.dateLost)        * 100;
+    const locationScore = calculateLocationScore(item.locationFound, report.locationLost) * 100;
+    
+    const featureScore  = calculateFeatureScore(
+        item.identifyingFeatures || [], report.identifyingFeatures || [],
+        item.brand, report.brand,
+        item.itemSize, report.itemSize,
+        item.bagContents, report.bagContents
+    ) * 100;
 
-    // Date proximity score
-    const dateScore = this.calculateDateScore(item.dateFound, report.dateLost);
+    const colorScore    = calculateColorScore(item.color, report.color) * 100;
 
-    // Location similarity score
-    const locationScore = this.calculateLocationScore(
-      item.locationFound,
-      report.locationLost
-    );
-
-    // Feature score
-    const featureScore = this.calculateFeatureScore(
-      item.identifyingFeatures || [],
-      report.identifyingFeatures || []
-    );
-
-    // Weighted total score
-    // Updated weights: Keywords 0.3, Location 0.2, Date 0.1, Features 0.3, Category 0.1
     const totalScore =
-      categoryScore * 0.1 +
-      keywordScore * 0.3 +
-      dateScore * 0.1 +
-      locationScore * 0.2 +
-      featureScore * 0.3;
+      categoryScore * weights.category +
+      keywordScore  * weights.keyword  +
+      dateScore     * weights.date     +
+      locationScore * weights.location +
+      featureScore  * weights.feature  +
+      colorScore    * weights.color;
 
     return {
-      categoryScore,
-      keywordScore,
-      dateScore,
-      locationScore,
-      featureScore,
-      totalScore,
+      categoryScore:  parseFloat((categoryScore * weights.category).toFixed(1)),
+      keywordScore:   parseFloat((keywordScore  * weights.keyword).toFixed(1)),
+      dateScore:      parseFloat((dateScore     * weights.date).toFixed(1)),
+      locationScore:  parseFloat((locationScore * weights.location).toFixed(1)),
+      featureScore:   parseFloat((featureScore  * weights.feature).toFixed(1)),
+      colorScore:     parseFloat((colorScore    * weights.color).toFixed(1)),
+      totalScore:     Math.round(totalScore),
     };
   }
 
-  private calculateFeatureScore(itemFeatures: string[], reportFeatures: string[]): number {
-    if (!itemFeatures.length || !reportFeatures.length) return 0;
+  async getAllMatches(
+    filters: { status?: string; minConfidence?: number; fromDate?: string; toDate?: string; search?: string },
+    pagination: { page: number; limit: number }
+  ): Promise<{ data: IMatch[]; total: number }> {
+    const query: mongoose.FilterQuery<IMatch> = {};
 
-    // Normalize features
-    const f1 = itemFeatures.map(f => this.normalizeText(f));
-    const f2 = reportFeatures.map(f => this.normalizeText(f));
+    if (filters.status) query.status = filters.status;
+    if (filters.minConfidence) query.confidenceScore = { $gte: filters.minConfidence };
 
-    let matchCount = 0;
-    
-    // Check for fuzzy matches between features
-    for (const feat1 of f1) {
-      for (const feat2 of f2) {
-        if (feat1 === feat2 || feat1.includes(feat2) || feat2.includes(feat1)) {
-          matchCount++;
-          break; // Count each item feature at most once
-        }
+    if (filters.fromDate || filters.toDate) {
+      query.createdAt = {};
+      if (filters.fromDate) (query.createdAt as Record<string, unknown>).$gte = new Date(filters.fromDate);
+      if (filters.toDate)   (query.createdAt as Record<string, unknown>).$lte = new Date(filters.toDate);
+    }
+
+    if (filters.search) {
+      const searchTerms = filters.search.split(/\s+/).filter(t => t.length > 2);
+      if (searchTerms.length > 0) {
+        // Use text search if indexed, otherwise fallback to pre-filtered keywords
+        const [items, reports] = await Promise.all([
+          Item.find({ $text: { $search: filters.search } }).select('_id'),
+          LostReport.find({ $text: { $search: filters.search } }).select('_id')
+        ]);
+        
+        const itemIds = items.map(i => i._id);
+        const reportIds = reports.map(r => r._id);
+        
+        query.$or = [
+          { itemId: { $in: itemIds } },
+          { lostReportId: { $in: reportIds } }
+        ];
       }
     }
 
-    // Score is based on the proportion of report features matched
-    // We prioritize matching what the loser reported
-    return Math.min(matchCount / f2.length, 1.0);
+    const total = await Match.countDocuments(query);
+    const matches = await Match.find(query)
+      .sort({ confidenceScore: -1, createdAt: -1 })
+      .skip((pagination.page - 1) * pagination.limit)
+      .limit(pagination.limit)
+      .populate('itemId')
+      .populate('lostReportId');
+
+    return { data: matches, total };
   }
 
-  private normalizeText(text: string): string {
-    return text
-      .toLowerCase()
-      .replace(/[^\w\s]/g, '') // Remove punctuation
-      .replace(/\s+/g, ' ') // Collapse whitespace
-      .trim();
-  }
+  async updateMatchStatus(matchId: string, status: 'CONFIRMED' | 'REJECTED'): Promise<IMatch> {
+    const match = await Match.findById(matchId);
+    if (!match) throw new NotFoundError('Match not found');
 
-  private expandAbbreviations(text: string): string {
-    const expansions: Record<string, string> = {
-      't1': 'terminal 1',
-      't2': 'terminal 2',
-      't3': 'terminal 3',
-      'apt': 'apartment',
-      'st': 'street',
-      'ave': 'avenue',
-      'rd': 'road',
-      'rm': 'room',
-      'flr': 'floor',
-      'lib': 'library',
-      'dept': 'department',
-      'bldg': 'building',
-    };
+    match.status = status;
+    await match.save();
 
-    return text.split(' ').map(word => expansions[word] || word).join(' ');
-  }
-
-  private calculateKeywordScore(
-    itemKeywords: string[],
-    reportKeywords: string[]
-  ): number {
-    if (itemKeywords.length === 0 || reportKeywords.length === 0) {
-      return 0;
+    if (status === 'CONFIRMED' && !match.notified) {
+      const report = await LostReport.findById(match.lostReportId);
+      if (report) {
+        const settings = await this.getSettings();
+        await this.handleAutoMatch(match, report.reportedBy.toString(), match.confidenceScore, settings.autoMatchThreshold, settings.rejectThreshold);
+      }
     }
-
-    const stopWords = new Set(['the', 'a', 'an', 'in', 'on', 'at', 'for', 'of', 'with']);
-    const filterKeywords = (keywords: string[]) => 
-      keywords.filter(k => !stopWords.has(k) && k.length > 2);
-
-    const k1 = filterKeywords(itemKeywords);
-    const k2 = filterKeywords(reportKeywords);
-
-    if (k1.length === 0 || k2.length === 0) return 0;
-
-    const intersection = k1.filter((k) =>
-      k2.some(k2Word => k2Word.includes(k) || k.includes(k2Word)) // Partial match
-    ).length;
-    
-    const union = new Set([...k1, ...k2]).size;
-
-    return intersection / union;
-  }
-
-  private calculateDateScore(dateFound: Date, dateLost: Date): number {
-    const daysDiff = Math.abs(
-      (dateFound.getTime() - dateLost.getTime()) / (1000 * 60 * 60 * 24)
-    );
-
-    if (daysDiff === 0) return 1.0;
-    if (daysDiff <= 1) return 0.95;
-    if (daysDiff <= 3) return 0.8;
-    if (daysDiff <= 7) return 0.6;
-    if (daysDiff <= 14) return 0.4;
-    return 0.1;
-  }
-
-  private calculateLocationScore(
-    locationFound: string,
-    locationLost: string
-  ): number {
-    let loc1 = this.normalizeText(locationFound);
-    let loc2 = this.normalizeText(locationLost);
-
-    // Expand common abbreviations (e.g. "T3" -> "terminal 3")
-    loc1 = this.expandAbbreviations(loc1);
-    loc2 = this.expandAbbreviations(loc2);
-
-    if (loc1 === loc2) return 1.0;
-    if (loc1.includes(loc2) || loc2.includes(loc1)) return 0.9;
-
-    // Token matching
-    const words1 = loc1.split(/\s+/);
-    const words2 = loc2.split(/\s+/);
-    
-    // Calculate intersection
-    const intersection = words1.filter(w1 => 
-      words2.some(w2 => w2 === w1 || (w2.length > 4 && w1.includes(w2)))
-    ).length;
-
-    return intersection / Math.max(words1.length, words2.length);
+    return match;
   }
 }
 

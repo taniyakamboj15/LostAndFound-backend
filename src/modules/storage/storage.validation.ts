@@ -17,9 +17,27 @@ export const createStorageValidation = [
   body('binNumber')
     .optional()
     .isString(),
-  body('capacity')
-    .isInt({ min: 1 })
-    .withMessage('Capacity must be at least 1'),
+  body('capacity.small')
+    .isInt({ min: 0 })
+    .withMessage('Small capacity must be at least 0'),
+  body('capacity.medium')
+    .isInt({ min: 0 })
+    .withMessage('Medium capacity must be at least 0'),
+  body('capacity.large')
+    .isInt({ min: 0 })
+    .withMessage('Large capacity must be at least 0'),
+  body('city')
+    .isString()
+    .trim()
+    .isLength({ min: 2, max: 100 })
+    .withMessage('City is required'),
+  body('address')
+    .optional()
+    .isString()
+    .trim(),
+  body('isPickupPoint')
+    .isBoolean()
+    .withMessage('isPickupPoint must be a boolean'),
 ];
 
 export const updateStorageValidation = [
@@ -39,10 +57,27 @@ export const updateStorageValidation = [
   body('binNumber')
     .optional()
     .isString(),
-  body('capacity')
+  body('capacity.small')
     .optional()
-    .isInt({ min: 1 }),
+    .isInt({ min: 0 }),
+  body('capacity.medium')
+    .optional()
+    .isInt({ min: 0 }),
+  body('capacity.large')
+    .optional()
+    .isInt({ min: 0 }),
   body('isActive')
+    .optional()
+    .isBoolean(),
+  body('city')
+    .optional()
+    .isString()
+    .trim(),
+  body('address')
+    .optional()
+    .isString()
+    .trim(),
+  body('isPickupPoint')
     .optional()
     .isBoolean(),
 ];

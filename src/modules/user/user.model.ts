@@ -48,6 +48,11 @@ const userSchema = new Schema<IUser>(
     },
     avatar: String,
     phone: String,
+    notificationPreferences: {
+      emailOptOut: { type: Boolean, default: false },
+      smsOptOut: { type: Boolean, default: false },
+      channels: { type: [String], default: ['IN_APP', 'EMAIL'] },
+    },
   },
   {
     timestamps: true,

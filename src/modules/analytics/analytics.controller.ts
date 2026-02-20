@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import { asyncHandler } from '../../common/helpers/asyncHandler';
-import { AuthenticatedRequest } from '../../common/types';
+import { AuthenticatedRequest, ItemCategory } from '../../common/types';
 import analyticsService from './analytics.service';
 
 /**
@@ -23,8 +23,8 @@ class AnalyticsController {
    *         description: Dashboard metrics retrieved successfully
    */
   getDashboard = asyncHandler(
-    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-      const metrics = await analyticsService.getDashboardMetrics(req.user!);
+    async (_req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const metrics = await analyticsService.getDashboardMetrics();
 
       res.json({
         success: true,
@@ -125,6 +125,83 @@ class AnalyticsController {
     async (_req: AuthenticatedRequest, res: Response): Promise<void> => {
       const data = await analyticsService.getPaymentAnalytics();
       res.json({ success: true, data });
+    }
+  );
+
+  /**
+   * @swagger
+   * /api/analytics/prediction:
+   *   get:
+   *     summary: Get time-to-claim prediction
+   *     tags: [Analytics]
+   *     parameters:
+   *       - in: query
+   *         name: category
+   *         required: true
+   *         schema:
+   *           type: string
+   *       - in: query
+   *         name: location
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: Prediction retrieved successfully
+   */
+  getPrediction = asyncHandler(
+    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const { category, location } = req.query;
+      const prediction = await analyticsService.predictTimeToClaim(
+        category as ItemCategory, 
+        location as string || ''
+      );
+      res.json({ success: true, data: prediction });
+    }
+  );
+
+  /**
+   * @swagger
+   * /api/analytics/storage-optimization:
+   *   get:
+   *     summary: Get storage optimization insights
+   *     tags: [Analytics]
+   *     responses:
+   *       200:
+   *         description: Optimization insights retrieved successfully
+   */
+  getStorageOptimization = asyncHandler(
+    async (_req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const insights = await analyticsService.optimizeStorage();
+      res.json({ success: true, data: insights });
+    }
+  );
+
+  /**
+   * @swagger
+   * /api/analytics/staff-workload:
+   *   get:
+   *     summary: Get predicted staff workload peaks
+   *     tags: [Analytics]
+   */
+  getStaffWorkload = asyncHandler(
+    async (_req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const workload = await analyticsService.getStaffWorkloadTrends();
+      res.json({ success: true, data: workload });
+    }
+  );
+
+  /**
+   * @swagger
+   * /api/analytics/prediction-accuracy:
+   *   get:
+   *     summary: Get historical prediction accuracy stats
+   *     tags: [Analytics]
+   */
+  getPredictionAccuracy = asyncHandler(
+    async (_req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const accuracy = await analyticsService.getPredictionAccuracy();
+      res.json({ success: true, data: accuracy });
     }
   );
 }

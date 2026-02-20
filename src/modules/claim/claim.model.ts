@@ -14,12 +14,19 @@ const claimSchema = new Schema<IClaim>(
     claimantId: {
       type: Schema.Types.ObjectId,
       ref: 'User',
-      required: true,
       index: true,
     },
+    isAnonymous: { type: Boolean, default: false },
+    email: { type: String, trim: true },
+    claimToken: { type: String, select: false },
     lostReportId: {
       type: Schema.Types.ObjectId,
       ref: 'LostReport',
+    },
+    preferredPickupLocation: {
+      type: Schema.Types.ObjectId,
+      ref: 'Storage',
+      required: false, // Default to null, will be checked during transfer logic
     },
     description: {
       type: String,
@@ -64,11 +71,32 @@ const claimSchema = new Schema<IClaim>(
       paidAt: { type: Date },
       transactionId: { type: String },
     },
+    // Fraud detection
+    fraudRiskScore: { type: Number, default: 0, min: 0, max: 100 },
+    fraudFlags: [{ type: String }],
+    // Challenge-response verification history
+    challengeHistory: [
+      {
+        question: { type: String, required: true },
+        answer: { type: String, required: false },
+        matchScore: { type: Number, required: false },
+        passed: { type: Boolean, required: false },
+        conductedAt: { type: Date, default: Date.now },
+        conductedBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+      },
+    ],
+    deletedAt: { type: Date, index: true },
   },
   {
     timestamps: true,
   }
 );
+
+// Query middleware to filter out deleted claims
+claimSchema.pre(/^find/, function (this: mongoose.Query<IClaim[], IClaim>, next) {
+  this.where({ deletedAt: null });
+  next();
+});
 
 // Indexes
 claimSchema.index({ itemId: 1, status: 1 });

@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { asyncHandler } from '../../common/helpers/asyncHandler';
-import { AuthenticatedRequest, MulterRequest, ItemCategory, ItemStatus } from '../../common/types';
+import { AuthenticatedRequest, MulterRequest, ItemCategory, ItemStatus, UserRole } from '../../common/types';
 import itemService from './item.service';
 
 /**
@@ -64,6 +64,13 @@ class ItemController {
         contactEmail,
         contactPhone,
         identifyingFeatures,
+        storageLocation,
+        // Structured markers
+        brand,
+        color,
+        itemSize,
+        bagContents,
+        secretIdentifiers,
       } = req.body;
 
       const multerFiles = (req as MulterRequest).files || [];
@@ -85,6 +92,7 @@ class ItemController {
         registeredBy: req.user!.id,
         isHighValue,
         estimatedValue,
+        storageLocation,
         finderContact: {
           email: contactEmail,
           phone: contactPhone,
@@ -92,6 +100,16 @@ class ItemController {
         identifyingFeatures: typeof identifyingFeatures === 'string' 
           ? identifyingFeatures.split(',').map((f: string) => f.trim()).filter((f: string) => f.length > 0)
           : identifyingFeatures,
+        // Structured markers
+        brand,
+        color,
+        itemSize,
+        bagContents: typeof bagContents === 'string'
+          ? bagContents.split(',').map((b: string) => b.trim()).filter(Boolean)
+          : bagContents,
+        secretIdentifiers: typeof secretIdentifiers === 'string'
+          ? secretIdentifiers.split(/[,\n]/).map((s: string) => s.trim()).filter(Boolean)
+          : secretIdentifiers,
       });
 
       res.status(201).json({
@@ -104,9 +122,80 @@ class ItemController {
 
   /**
    * @swagger
+   * /api/items/public/search:
+   *   get:
+   *     summary: Publicly search found items
+   *     tags: [Items]
+   *     parameters:
+   *       - in: query
+   *         name: category
+   *         schema:
+   *           type: string
+   *       - in: query
+   *         name: location
+   *         schema:
+   *           type: string
+   *       - in: query
+   *         name: dateFoundFrom
+   *         schema:
+   *           type: string
+   *           format: date
+   *       - in: query
+   *         name: dateFoundTo
+   *         schema:
+   *           type: string
+   *           format: date
+   *       - in: query
+   *         name: keyword
+   *         schema:
+   *           type: string
+   *       - in: query
+   *         name: page
+   *         schema:
+   *           type: integer
+   *           default: 1
+   *       - in: query
+   *         name: limit
+   *         schema:
+   *           type: integer
+   *           default: 20
+   *     responses:
+   *       200:
+   *         description: Public items retrieved successfully
+   */
+  searchPublicItems = asyncHandler(
+    async (req: Request, res: Response): Promise<void> => {
+      const { category, location, dateFoundFrom, dateFoundTo, keyword, page = 1, limit = 20 } = req.query;
+
+      const result = await itemService.publicSearchItems(
+        {
+          category: category as ItemCategory,
+          location: location as string,
+          dateFoundFrom: dateFoundFrom ? new Date(dateFoundFrom as string) : undefined,
+          dateFoundTo: dateFoundTo ? new Date(dateFoundTo as string) : undefined,
+          keyword: keyword as string,
+        },
+        {
+          page: parseInt(page as string),
+          limit: parseInt(limit as string),
+          sortBy: 'dateFound',
+          sortOrder: 'desc',
+        }
+      );
+
+      res.json({
+        success: true,
+        data: result.data,
+        pagination: result.pagination,
+      });
+    }
+  );
+
+  /**
+   * @swagger
    * /api/items:
    *   get:
-   *     summary: Search and filter items
+   *     summary: Search and filter items (Staff/Admin)
    *     tags: [Items]
    *     security:
    *       - bearerAuth: []
@@ -192,9 +281,27 @@ class ItemController {
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       const item = await itemService.getItemById(req.params.id);
 
+      const user = req.user;
+      const isAdminOrStaff = user && (user.role === UserRole.ADMIN || user.role === UserRole.STAFF);
+
+      let responseData = item.toObject();
+
+      if (!isAdminOrStaff) {
+        // Redact sensitive details for public/claimants
+        delete responseData.brand;
+        delete responseData.bagContents;
+        delete responseData.secretIdentifiers;
+        delete responseData.storageLocation;
+        delete responseData.finderContact;
+        delete responseData.registeredBy;
+        delete responseData.prediction;
+        
+        // Obfuscate location and description a bit if needed, but for now just exact markers
+      }
+
       res.json({
         success: true,
-        data: item,
+        data: responseData,
       });
     }
   );
@@ -290,73 +397,12 @@ class ItemController {
     }
   );
 
-  /**
-   * @swagger
-   * /api/items/public/search:
-   *   get:
-   *     summary: Publicly search found items
-   *     tags: [Items]
-   *     parameters:
-   *       - in: query
-   *         name: category
-   *         schema:
-   *           type: string
-   *       - in: query
-   *         name: location
-   *         schema:
-   *           type: string
-   *       - in: query
-   *         name: dateFoundFrom
-   *         schema:
-   *           type: string
-   *           format: date
-   *       - in: query
-   *         name: dateFoundTo
-   *         schema:
-   *           type: string
-   *           format: date
-   *       - in: query
-   *         name: keyword
-   *         schema:
-   *           type: string
-   *       - in: query
-   *         name: page
-   *         schema:
-   *           type: integer
-   *           default: 1
-   *       - in: query
-   *         name: limit
-   *         schema:
-   *           type: integer
-   *           default: 20
-   *     responses:
-   *       200:
-   *         description: Public items retrieved successfully
-   */
-  searchPublicItems = asyncHandler(
-    async (req: Request, res: Response): Promise<void> => {
-      const { category, location, dateFoundFrom, dateFoundTo, keyword, page = 1, limit = 20 } = req.query;
-
-      const result = await itemService.publicSearchItems(
-        {
-          category: category as ItemCategory,
-          location: location as string,
-          dateFoundFrom: dateFoundFrom ? new Date(dateFoundFrom as string) : undefined,
-          dateFoundTo: dateFoundTo ? new Date(dateFoundTo as string) : undefined,
-          keyword: keyword as string,
-        },
-        {
-          page: parseInt(page as string),
-          limit: parseInt(limit as string),
-          sortBy: 'dateFound',
-          sortOrder: 'desc',
-        }
-      );
-
+  deleteItem = asyncHandler(
+    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      await itemService.deleteItem(req.params.id, req.user!.id);
       res.json({
         success: true,
-        data: result.data,
-        pagination: result.pagination,
+        message: 'Item deleted (soft)',
       });
     }
   );

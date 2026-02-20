@@ -3,105 +3,85 @@ import { asyncHandler } from '../../common/helpers/asyncHandler';
 import { AuthenticatedRequest } from '../../common/types';
 import matchService from './match.service';
 
-/**
- * @swagger
- * tags:
- *   name: Matches
- *   description: Automatic matching between items and lost reports
- */
 class MatchController {
-  /**
-   * @swagger
-   * /api/matches/report/{reportId}:
-   *   get:
-   *     summary: Get potential item matches for a lost report
-   *     tags: [Matches]
-   *     security:
-   *       - bearerAuth: []
-   *     parameters:
-   *       - in: path
-   *         name: reportId
-   *         required: true
-   *         schema:
-   *           type: string
-   *     responses:
-   *       200:
-   *         description: Matches retrieved successfully
-   */
   getMatchesForReport = asyncHandler(
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       const matches = await matchService.getMatchesForReport(req.params.reportId);
-
-      res.json({
-        success: true,
-        data: matches,
-      });
+      res.json({ success: true, data: matches });
     }
   );
 
-  /**
-   * @swagger
-   * /api/matches/item/{itemId}:
-   *   get:
-   *     summary: Get potential lost report matches for an item
-   *     tags: [Matches]
-   *     security:
-   *       - bearerAuth: []
-   *     parameters:
-   *       - in: path
-   *         name: itemId
-   *         required: true
-   *         schema:
-   *           type: string
-   *     responses:
-   *       200:
-   *         description: Matches retrieved successfully
-   */
   getMatchesForItem = asyncHandler(
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       const matches = await matchService.getMatchesForItem(req.params.itemId);
+      res.json({ success: true, data: matches });
+    }
+  );
+
+  generateMatches = asyncHandler(
+    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const { reportId, itemId } = req.body;
+      const matches = await matchService.generateMatches({ lostReportId: reportId, itemId });
+      res.json({ success: true, message: `Generated ${matches.length} matches`, data: matches });
+    }
+  );
+
+  getAllMatches = asyncHandler(
+    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const { status, minConfidence, fromDate, toDate, search, page = 1, limit = 20 } = req.query;
+
+      const result = await matchService.getAllMatches(
+        {
+          status: status as string,
+          minConfidence: minConfidence ? parseFloat(minConfidence as string) : undefined,
+          fromDate: fromDate as string,
+          toDate: toDate as string,
+          search: search as string,
+        },
+        { page: parseInt(page as string), limit: parseInt(limit as string) }
+      );
 
       res.json({
         success: true,
-        data: matches,
+        data: result.data,
+        pagination: {
+          page: parseInt(page as string),
+          limit: parseInt(limit as string),
+          total: result.total,
+          totalPages: Math.ceil(result.total / parseInt(limit as string)),
+        },
       });
     }
   );
 
-  /**
-   * @swagger
-   * /api/matches/generate:
-   *   post:
-   *     summary: Manually trigger match generation for a report
-   *     tags: [Matches]
-   *     security:
-   *       - bearerAuth: []
-   *     requestBody:
-   *       required: true
-   *       content:
-   *         application/json:
-   *           schema:
-   *             type: object
-   *             required:
-   *               - reportId
-   *             properties:
-   *               reportId:
-   *                 type: string
-   *     responses:
-   *       200:
-   *         description: Matches generated successfully
-   */
-  generateMatches = asyncHandler(
+  updateMatchStatus = asyncHandler(
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-      const { reportId } = req.body;
+      const { status } = req.body;
+      const match = await matchService.updateMatchStatus(req.params.id, status);
+      res.json({ success: true, data: match });
+    }
+  );
 
-      const matches = await matchService.generateMatches(reportId);
+  rescan = asyncHandler(
+    async (_req: AuthenticatedRequest, res: Response): Promise<void> => {
+      await matchService.reScanAll();
+      res.json({ success: true, message: 'Re-scan complete. All pending matches updated.' });
+    }
+  );
 
-      res.json({
-        success: true,
-        message: `Generated ${matches.length} matches`,
-        data: matches,
-      });
+  /** GET /api/matches/config — get current threshold/weight configuration */
+  getConfig = asyncHandler(
+    async (_req: AuthenticatedRequest, res: Response): Promise<void> => {
+      res.json({ success: true, data: matchService.getConfig() });
+    }
+  );
+
+  /** PUT /api/matches/config — update thresholds & weights (Admin/Staff) */
+  updateConfig = asyncHandler(
+    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const { autoMatchThreshold, rejectThreshold, weights } = req.body;
+      const config = matchService.updateConfig({ autoMatchThreshold, rejectThreshold, weights });
+      res.json({ success: true, message: 'Match config updated', data: config });
     }
   );
 }

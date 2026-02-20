@@ -41,6 +41,12 @@ router.get(
   dispositionController.getDispositionById
 );
 
+// Get disposition by Item ID
+router.get(
+  '/item/:itemId',
+  dispositionController.getDispositionByItemId
+);
+
 // Add audit entry
 router.post(
   '/:id/audit',

@@ -12,7 +12,6 @@ export const verifyReportOwnership = asyncHandler(
         return next();
     }
 
-    // Skip check for Staff/Admin
     if (req.user!.role === UserRole.STAFF || req.user!.role === UserRole.ADMIN) {
       return next();
     }

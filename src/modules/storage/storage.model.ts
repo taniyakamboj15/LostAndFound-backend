@@ -18,20 +18,26 @@ const storageSchema = new Schema<IStorage>(
     shelfNumber: String,
     binNumber: String,
     capacity: {
-      type: Number,
-      required: true,
-      min: 1,
+      small: { type: Number, required: true, default: 0, min: 0 },
+      medium: { type: Number, required: true, default: 0, min: 0 },
+      large: { type: Number, required: true, default: 0, min: 0 },
     },
     currentCount: {
-      type: Number,
-      default: 0,
-      min: 0,
+      small: { type: Number, default: 0, min: 0 },
+      medium: { type: Number, default: 0, min: 0 },
+      large: { type: Number, default: 0, min: 0 },
     },
     isActive: {
       type: Boolean,
       default: true,
       index: true,
     },
+    isPickupPoint: {
+      type: Boolean,
+      default: true,
+    },
+    city: String,
+    address: String,
   },
   {
     timestamps: true,

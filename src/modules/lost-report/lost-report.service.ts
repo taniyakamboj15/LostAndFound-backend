@@ -1,13 +1,14 @@
 import LostReport, { ILostReport } from './lost-report.model';
+import { ForbiddenError, NotFoundError } from '../../common/errors';
 import {
   LostReportSearchFilters,
   PaginatedResponse,
   PaginationParams,
 } from '../../common/types';
-import { NotFoundError } from '../../common/errors';
 import activityService from '../activity/activity.service';
 import { ActivityAction } from '../../common/types';
 import * as matchQueue from '../match/match.queue';
+import mongoose, { FilterQuery } from 'mongoose';
 
 class LostReportService {
   async createLostReport(data: {
@@ -19,6 +20,10 @@ class LostReportService {
     contactEmail: string;
     contactPhone?: string;
     identifyingFeatures: string[];
+    brand?: string;
+    color?: string;
+    itemSize?: string;
+    bagContents?: string[];
   }): Promise<ILostReport> {
     const report = await LostReport.create(data);
 
@@ -167,15 +172,14 @@ class LostReportService {
   async updateLostReport(
     reportId: string,
     userId: string,
+    userRole: string,
     data: Partial<Pick<ILostReport, 'description' | 'contactPhone' | 'identifyingFeatures'>>
   ): Promise<ILostReport> {
-    const report = await LostReport.findOne({
-      _id: reportId,
-      reportedBy: userId,
-    });
+    const report = await LostReport.findById(reportId);
+    if (!report) throw new NotFoundError('Lost report not found');
 
-    if (!report) {
-      throw new NotFoundError('Lost report not found or unauthorized');
+    if (userRole === 'CLAIMANT' && report.reportedBy.toString() !== userId) {
+      throw new ForbiddenError('You do not have permission to update this report');
     }
 
     Object.assign(report, data);
@@ -184,15 +188,46 @@ class LostReportService {
     return report;
   }
 
-  async deleteLostReport(reportId: string, userId: string): Promise<void> {
-    const result = await LostReport.deleteOne({
-      _id: reportId,
-      reportedBy: userId,
-    });
+  async deleteLostReport(reportId: string, userId: string, userRole: string): Promise<void> {
+    const query: FilterQuery<ILostReport> = { _id: reportId };
+    if (userRole === 'CLAIMANT') {
+      query.reportedBy = new mongoose.Types.ObjectId(userId);
+    }
 
-    if (result.deletedCount === 0) {
+    const report = await LostReport.findOne(query);
+
+    if (!report) {
       throw new NotFoundError('Lost report not found or unauthorized');
     }
+
+    report.deletedAt = new Date();
+    await report.save();
+
+    // Log activity
+    await activityService.logActivity({
+      action: ActivityAction.ITEM_UPDATED, // Reuse or add LOST_REPORT_DELETED
+      userId,
+      entityType: 'LostReport',
+      entityId: reportId,
+      metadata: { action: 'DELETED_SOFT' },
+    });
+  }
+
+  async toggleStarReport(reportId: string, userId: string): Promise<ILostReport> {
+    const report = await LostReport.findById(reportId);
+    if (!report) throw new NotFoundError('Lost report not found');
+
+    const starredByIds = report.starredBy.map(id => id.toString());
+    const index = starredByIds.indexOf(userId);
+
+    if (index === -1) {
+      report.starredBy.push(new mongoose.Types.ObjectId(userId));
+    } else {
+      report.starredBy.splice(index, 1);
+    }
+
+    await report.save();
+    return report;
   }
 }
 

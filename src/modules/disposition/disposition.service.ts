@@ -55,15 +55,24 @@ class DispositionService {
    
     if (item.storageLocation) {
       try {
-        await storageService.removeItemFromStorage(item.storageLocation.toString());
+        const size = (item.itemSize?.toLowerCase() || 'medium') as 'small' | 'medium' | 'large';
+        await storageService.removeItemFromStorage(item.storageLocation.toString(), size);
         item.storageLocation = undefined;
       } catch (error) {
          console.error('Error removing from storage during disposition:', error);
-      
       }
     }
 
     await item.save();
+
+    // Finalize audit record
+    disposition.auditTrail.push({
+      action: 'DISPOSITION_COMPLETED',
+      timestamp: new Date(),
+      userId: data.processedBy as never,
+      details: `Item ${data.itemId} status moved to DISPOSED. Storage cleared.`,
+    });
+    await disposition.save();
 
     // Log activity
     await activityService.logActivity({
@@ -92,6 +101,12 @@ class DispositionService {
     }
 
     return disposition;
+  }
+
+  async getDispositionByItemId(itemId: string): Promise<IDisposition | null> {
+    return Disposition.findOne({ itemId })
+      .populate('processedBy', 'name email')
+      .populate('auditTrail.userId', 'name email');
   }
 
   async getAllDispositions(

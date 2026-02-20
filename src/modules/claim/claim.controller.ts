@@ -41,13 +41,14 @@ class ClaimController {
    */
   createClaim = asyncHandler(
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-      const { itemId, description, lostReportId } = req.body;
+      const { itemId, description, lostReportId, preferredPickupLocation } = req.body;
 
       const claim = await claimService.createClaim({
         itemId,
         claimantId: req.user!.id,
         description,
         lostReportId,
+        preferredPickupLocation,
       });
 
       res.status(201).json({
@@ -213,7 +214,7 @@ class ClaimController {
    */
   getClaimById = asyncHandler(
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-      const claim = await claimService.getClaimById(req.params.id);
+      const claim = await claimService.getClaimById(req.params.id, req.user!.role);
 
       // Access control
       const isStaffOrAdmin = [UserRole.STAFF, UserRole.ADMIN].includes(
@@ -245,7 +246,8 @@ class ClaimController {
         actor: (activity.userId && typeof activity.userId === 'object' && 'name' in activity.userId) 
           ? (activity.userId as { name: string }).name 
           : 'System',
-        timestamp: activity.createdAt
+        timestamp: activity.createdAt,
+        metadata: activity.metadata
       }));
 
       res.json({
@@ -403,6 +405,84 @@ class ClaimController {
         success: true,
         message: 'Claim rejected',
         data: claim,
+      });
+    }
+  );
+
+  /**
+   * @swagger
+   * /api/claims/{id}/request-proof:
+   *   post:
+   *     summary: Request identity proof for a claim (Staff/Admin only)
+   *     tags: [Claims]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: Proof requested successfully
+   */
+  requestProof = asyncHandler(
+    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const claim = await claimService.requestProofManually(
+        req.params.id,
+        req.user!.id
+      );
+
+      res.json({
+        success: true,
+        message: 'Proof requested successfully',
+        data: claim,
+      });
+    }
+  );
+
+  /** POST /api/claims/:id/challenge-question — Staff asks a question */
+  addChallengeQuestion = asyncHandler(
+    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const { question } = req.body;
+      const claim = await claimService.addChallengeQuestion(
+        req.params.id,
+        question,
+        req.user!.id
+      );
+      res.json({
+        success: true,
+        message: 'Challenge question added',
+        data: claim,
+      });
+    }
+  );
+
+  /** POST /api/claims/:id/challenge-answer/:challengeId — Claimant answers the question for fuzzy matching */
+  submitChallengeResponse = asyncHandler(
+    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const { answer } = req.body;
+      const result = await claimService.submitChallengeResponse(
+        req.params.id,
+        req.params.challengeId,
+        answer,
+        req.user!.id
+      );
+      res.json({
+        success: true,
+        message: result.passed ? 'Challenge passed ✓' : 'Challenge failed ✗',
+        data: result,
+      });
+    }
+  );
+ 
+  deleteClaim = asyncHandler(
+    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      await claimService.deleteClaim(req.params.id, req.user!.id, req.user!.role);
+      res.json({
+        success: true,
+        message: 'Claim deleted successfully',
       });
     }
   );

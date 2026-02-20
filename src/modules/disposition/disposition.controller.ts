@@ -158,6 +158,35 @@ class DispositionController {
 
   /**
    * @swagger
+   * /api/dispositions/item/{itemId}:
+   *   get:
+   *     summary: Get disposition details by Item ID
+   *     tags: [Dispositions]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: itemId
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: Disposition details retrieved successfully
+   */
+  getDispositionByItemId = asyncHandler(
+    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const disposition = await dispositionService.getDispositionByItemId(req.params.itemId);
+
+      res.json({
+        success: true,
+        data: disposition,
+      });
+    }
+  );
+
+  /**
+   * @swagger
    * /api/dispositions/expired:
    *   get:
    *     summary: Get items whose retention period has expired

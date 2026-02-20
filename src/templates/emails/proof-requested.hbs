@@ -15,7 +15,14 @@
   </ul>
 </div>
 
-<p>You can securely upload these documents through our platform by clicking the button below:</p>
+{{#if question}}
+<div class="info-card" style="margin-top: 20px; border-left: 4px solid #f59e0b; padding-left: 15px;">
+  <p style="margin-bottom: 5px;"><strong>Action Required: Answer Security Question</strong></p>
+  <p style="font-style: italic; color: #4b5563; margin-top: 0;">{{question}}</p>
+</div>
+{{/if}}
+
+<p>You can securely upload these documents or provide answers through our platform by clicking the button below:</p>
 
 <div style="text-align: center;">
   <a href="{{clientUrl}}/claims/{{claimId}}/proof" class="button">Upload Proof Documents</a>

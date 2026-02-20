@@ -1,22 +1,14 @@
 import { Queue, Worker, Job } from 'bullmq';
 import itemService from '../item/item.service';
 import notificationService from '../notification/notification.service';
-import { NotificationEvent } from '../../common/types';
-import { IItem } from '../item/item.model';
-
-interface PopulatedItem extends Omit<IItem, 'registeredBy'> {
-  registeredBy: {
-    _id: string;
-    name: string;
-    email: string;
-  };
-}
+import { NotificationEvent, PopulatedItem } from '../../common/types';
 import logger from '../../common/utils/logger';
+import { REDIS } from '../../common/constants';
 
 const REDIS_CONFIG = {
-  host: process.env.REDIS_HOST || 'localhost',
-  port: parseInt(process.env.REDIS_PORT || '6379'),
-  password: process.env.REDIS_PASSWORD || undefined,
+  host: REDIS.HOST,
+  port: REDIS.PORT,
+  password: REDIS.PASSWORD,
 };
 
 class JobService {

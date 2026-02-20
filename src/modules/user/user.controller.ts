@@ -45,8 +45,45 @@ class UserController {
           isEmailVerified: user.isEmailVerified,
           avatar: user.avatar,
           phone: user.phone,
+          notificationPreferences: user.notificationPreferences,
           createdAt: user.createdAt,
         },
+      });
+    }
+  );
+
+  /** Alias for GET /api/users/me */
+  getMe = asyncHandler(
+    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const user = await userService.getUserById(req.user!.id);
+      res.json({
+        success: true,
+        data: {
+          id: user._id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+          isEmailVerified: user.isEmailVerified,
+          avatar: user.avatar,
+          phone: user.phone,
+          notificationPreferences: user.notificationPreferences,
+          createdAt: user.createdAt,
+        },
+      });
+    }
+  );
+
+  /** PATCH /api/users/me/notification-preferences */
+  updateNotificationPreferences = asyncHandler(
+    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const { notificationPreferences } = req.body;
+      const user = await userService.updateUser(req.user!.id, {
+        notificationPreferences,
+      });
+      res.json({
+        success: true,
+        message: 'Notification preferences updated',
+        data: { notificationPreferences: user.notificationPreferences },
       });
     }
   );

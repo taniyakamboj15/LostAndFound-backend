@@ -25,6 +25,8 @@ router.post(
 );
 
 // Protected routes
+router.get('/me', authenticate, userController.getMe);
+router.patch('/me/notification-preferences', authenticate, userController.updateNotificationPreferences);
 router.get('/profile', authenticate, userController.getProfile);
 
 router.patch(

@@ -2,6 +2,7 @@ import QRCode from 'qrcode';
 import mongoose from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 import Pickup, { IPickup } from './pickup.model';
+import User from '../user/user.model';
 
 interface PickupFilters {
   isCompleted?: string;
@@ -9,13 +10,15 @@ interface PickupFilters {
 }
 import Claim, { IClaim } from '../claim/claim.model';
 import Item from '../item/item.model';
-import { ClaimStatus, ItemStatus, PickupSlot, PaymentStatus } from '../../common/types';
+import { ClaimStatus, ItemStatus, PickupSlot, PaymentStatus, TransferStatus } from '../../common/types';
 import { NotFoundError, ValidationError } from '../../common/errors';
 import activityService from '../activity/activity.service';
 import { ActivityAction } from '../../common/types';
 import notificationService from '../notification/notification.service';
 import { NotificationEvent } from '../../common/types';
-
+import storageService from '../storage/storage.service';
+import transferService from '../transfer/transfer.service';
+import logger from '../../common/utils/logger';
 class PickupService {
   private readonly SLOT_DURATION = parseInt(
     process.env.PICKUP_SLOT_DURATION_MINUTES || '30'
@@ -32,11 +35,23 @@ class PickupService {
     const claim = await Claim.findOne({
       _id: data.claimId,
       claimantId: data.claimantId,
-      status: ClaimStatus.VERIFIED,
     });
 
     if (!claim) {
-      throw new NotFoundError('Verified claim not found');
+      throw new NotFoundError('Claim not found');
+    }
+
+    const allowedStatuses = [ClaimStatus.VERIFIED, ClaimStatus.ARRIVED];
+    if (!allowedStatuses.includes(claim.status)) {
+      throw new ValidationError(`Current claim status (${claim.status}) does not allow pickup booking. Please wait for the item to arrive at the pickup point.`);
+    }
+
+    // Double check: If status is VERIFIED, ensure there's no active transfer
+    if (claim.status === ClaimStatus.VERIFIED) {
+      const activeTransfer = await transferService.getTransferByClaimId(claim._id.toString());
+      if (activeTransfer && [TransferStatus.PENDING, TransferStatus.IN_TRANSIT, TransferStatus.RECOVERY_REQUIRED].includes(activeTransfer.status)) {
+        throw new ValidationError(`A transfer is currently in progress for this item. You can book a pickup once it has arrived.`);
+      }
     }
 
     if (claim.paymentStatus !== PaymentStatus.PAID) {
@@ -87,12 +102,27 @@ class PickupService {
       userId: data.claimantId,
       data: {
         pickupId: pickup._id.toString(),
+        claimId: data.claimId,
         pickupDate: data.pickupDate,
         startTime: data.startTime,
         endTime: data.endTime,
         referenceCode,
       },
     });
+
+    // Notify Staff about new pickup booking
+    notificationService.notifyStaff({
+      event: NotificationEvent.PICKUP_BOOKED,
+      data: {
+        pickupId: pickup._id.toString(),
+        claimId: data.claimId,
+        pickupDate: data.pickupDate,
+        startTime: data.startTime,
+        referenceCode,
+        claimantName: (await User.findById(data.claimantId).select('name'))?.name || 'A user'
+      },
+      referenceId: pickup._id.toString()
+    }).catch(err => logger.error('Failed to notify staff about pickup booking:', err));
 
     // Schedule pickup reminder (24 hours before)
     const reminderDate = new Date(data.pickupDate);
@@ -146,8 +176,20 @@ class PickupService {
 
   async getPickupById(pickupId: string): Promise<IPickup> {
     const pickup = await Pickup.findById(pickupId)
-      .populate('claimId')
-      .populate('itemId')
+      .populate({
+        path: 'claimId',
+        populate: { 
+          path: 'preferredPickupLocation',
+          model: 'Storage'
+        }
+      })
+      .populate({
+        path: 'itemId',
+        populate: {
+          path: 'storageLocation',
+          model: 'Storage'
+        }
+      })
       .populate('claimantId', 'name email phone')
       .populate('completedBy', 'name email');
 
@@ -189,8 +231,20 @@ class PickupService {
       .sort({ pickupDate: -1 })
       .skip((pagination.page - 1) * pagination.limit)
       .limit(pagination.limit)
-      .populate('itemId')
-      .populate('claimId');
+      .populate({
+        path: 'itemId',
+        populate: {
+          path: 'storageLocation',
+          model: 'Storage'
+        }
+      })
+      .populate({
+        path: 'claimId',
+        populate: {
+          path: 'preferredPickupLocation',
+          model: 'Storage'
+        }
+      });
 
     return { data: pickups, total };
   }
@@ -248,12 +302,22 @@ class PickupService {
     if (item) {
       // If item was in storage, remove it to free up space
       if (item.storageLocation) {
-        const { default: storageService } = await import('../storage/storage.service');
-        await storageService.removeItemFromStorage(item.storageLocation.toString());
+
+        const size = (item.itemSize || 'medium').toLowerCase() as 'small' | 'medium' | 'large';
+        await storageService.removeItemFromStorage(item.storageLocation.toString(), size);
         item.storageLocation = undefined;
       }
 
       item.status = ItemStatus.RETURNED;
+
+      // Predictive Analytics: Track accuracy
+      if (item.prediction && item.createdAt) {
+        const diffMs = new Date().getTime() - item.createdAt.getTime();
+        const actualDays = Math.max(1, Math.round(diffMs / (1000 * 60 * 60 * 24)));
+        item.prediction.actualClaimDays = actualDays;
+        item.prediction.isAccuracyTracked = true;
+      }
+
       await item.save();
     }
 
@@ -268,6 +332,19 @@ class PickupService {
         itemId: pickup.itemId.toString(),
       },
     });
+
+    // Notify Claimant that pickup is completed/finalized
+    notificationService.queueNotification({
+      event: NotificationEvent.PICKUP_COMPLETED,
+      userId: pickup.claimantId.toString(),
+      data: {
+        pickupId: pickup._id.toString(),
+        claimId: pickup.claimId.toString(),
+        itemDescription: (await Item.findById(pickup.itemId).select('description'))?.description || 'your item',
+        completedAt: pickup.completedAt
+      },
+      referenceId: pickup._id.toString()
+    }).catch(err => logger.error('Failed to notify claimant about pickup completion:', err));
 
     return pickup;
   }
@@ -330,8 +407,20 @@ class PickupService {
       .sort({ pickupDate: -1 })
       .skip((pagination.page - 1) * pagination.limit)
       .limit(pagination.limit)
-      .populate('itemId')
-      .populate('claimId')
+      .populate({
+        path: 'itemId',
+        populate: {
+          path: 'storageLocation',
+          model: 'Storage'
+        }
+      })
+      .populate({
+        path: 'claimId',
+        populate: {
+          path: 'preferredPickupLocation',
+          model: 'Storage'
+        }
+      })
       .populate('claimantId', 'name email phone');
 
     return { data: pickups, total };
